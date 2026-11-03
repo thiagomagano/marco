@@ -1,0 +1,127 @@
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Operador {
+  id           String   @id @default(cuid())
+  username     String   @unique
+  passwordHash String
+  nome         String
+  createdAt    DateTime @default(now())
+}
+
+model Frigorifico {
+  id             String       @id @default(cuid())
+  nomeFantasia   String
+  razaoSocial    String?
+  cnpj           String?
+  cnpjNormalized String?      @unique
+  contato        String?
+  telefone       String?
+  email          String?
+  observacoes    String?
+  ativo          Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  produtos       Produto[]
+  pedidos        Pedido[]
+}
+
+model Produto {
+  id              String       @id @default(cuid())
+  frigorificoId   String
+  codigo          String
+  nome            String
+  categoria       String?
+  unidade         String       // "kg" | "peça" | "caixa"
+  precoReferencia Float?
+  ativo           Boolean      @default(true)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  frigorifico     Frigorifico  @relation(fields: [frigorificoId], references: [id])
+  itensPedido     PedidoItem[]
+
+  @@unique([frigorificoId, codigo])
+}
+
+model Cliente {
+  id                String    @id @default(cuid())
+  razaoSocialOuNome String
+  nomeFantasia      String?
+  cnpj              String?
+  cnpjNormalized    String?   @unique
+  telefone          String?
+  email             String?
+  endereco          String?
+  observacoes       String?
+  ativo             Boolean   @default(true)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  pedidos           Pedido[]
+}
+
+model Vendedor {
+  id          String    @id @default(cuid())
+  nome        String
+  telefone    String?
+  observacoes String?
+  ativo       Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  pedidos     Pedido[]
+}
+
+model Pedido {
+  id                        String       @id @default(cuid())
+  numero                    String       @unique
+  numeroSequencial          Int          @unique
+  frigorificoId             String
+  clienteId                 String
+  vendedorId                String
+  status                    String       @default("RASCUNHO") // "RASCUNHO" | "CONFIRMADO" | "CANCELADO"
+  observacoes               String?
+  totalEstimado             Float        @default(0.0)
+  pesoInformadoKg           Float?
+  justificativaCancelamento String?
+  dataCriacao               DateTime     @default(now())
+  dataConfirmacao           DateTime?
+  dataCancelamento          DateTime?
+
+  frigorifico               Frigorifico  @relation(fields: [frigorificoId], references: [id])
+  cliente                   Cliente      @relation(fields: [clienteId], references: [id])
+  vendedor                  Vendedor     @relation(fields: [vendedorId], references: [id])
+  itens                     PedidoItem[]
+
+  @@index([frigorificoId])
+  @@index([clienteId])
+  @@index([vendedorId])
+  @@index([status])
+  @@index([dataCriacao])
+}
+
+model PedidoItem {
+  id                     String   @id @default(cuid())
+  pedidoId               String
+  produtoId              String
+  produtoCodigoSnapshot  String
+  produtoNomeSnapshot    String
+  produtoUnidadeSnapshot String
+  quantidade             Float
+  precoUnitario          Float
+  subtotal               Float
+
+  pedido                 Pedido   @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
+  produto                Produto  @relation(fields: [produtoId], references: [id])
+
+  @@index([pedidoId])
+  @@index([produtoId])
+}
