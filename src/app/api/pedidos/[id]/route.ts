@@ -215,7 +215,7 @@ export async function PATCH(
           clienteId: cId,
           vendedorId: vId,
           status: isConfirming ? "CONFIRMADO" : "RASCUNHO",
-          observacoes: observacoes ?? pedidoExistente.observacoes,
+          observacoes: observacoes !== undefined ? observacoes : pedidoExistente.observacoes,
           totalEstimado,
           pesoInformadoKg: pesoInformadoKg > 0 ? pesoInformadoKg : null,
           dataConfirmacao: isConfirming ? new Date() : null,

@@ -16,6 +16,7 @@ import {
   Clock,
   Printer,
   XCircle,
+  Pencil,
 } from "lucide-react";
 import { formatCurrency, formatQuantity } from "@/lib/money.ts";
 
@@ -207,14 +208,23 @@ export default function DetalhesPedidoPage({
 
         <div className="flex items-center gap-2">
           {pedido.status === "RASCUNHO" && (
-            <button
-              onClick={handleConfirmarRascunho}
-              disabled={confirmando}
-              className="inline-flex items-center gap-1.5 text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-xl shadow-xs transition cursor-pointer"
-            >
-              <CheckCircle2 className="w-4 h-4" />
-              <span>Confirmar Venda</span>
-            </button>
+            <>
+              <Link
+                href={`/pedidos/${pedido.id}/editar`}
+                className="inline-flex items-center gap-1.5 text-xs font-semibold bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 px-4 py-2 rounded-xl transition shadow-xs"
+              >
+                <Pencil className="w-3.5 h-3.5 text-blue-600" />
+                <span>Editar Rascunho</span>
+              </Link>
+              <button
+                onClick={handleConfirmarRascunho}
+                disabled={confirmando}
+                className="inline-flex items-center gap-1.5 text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-xl shadow-xs transition cursor-pointer"
+              >
+                <CheckCircle2 className="w-4 h-4" />
+                <span>Confirmar Venda</span>
+              </button>
+            </>
           )}
 
           {pedido.status === "CONFIRMADO" && (

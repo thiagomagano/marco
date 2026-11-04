@@ -413,13 +413,25 @@ export default function PedidosPage() {
                           {formatCurrency(p.totalEstimado)}
                         </td>
                         <td className="py-3.5 px-4 text-center">
-                          <Link
-                            href={`/pedidos/${p.id}`}
-                            className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-800 font-semibold"
-                          >
-                            <span>Detalhes</span>
-                            <ChevronRight className="w-3.5 h-3.5" />
-                          </Link>
+                          <div className="flex items-center justify-center gap-2">
+                            {p.status === "RASCUNHO" && (
+                              <Link
+                                href={`/pedidos/${p.id}/editar`}
+                                className="inline-flex items-center gap-1 text-amber-700 hover:text-amber-900 bg-amber-50 hover:bg-amber-100 border border-amber-200 px-2 py-0.5 rounded-md text-[11px] font-semibold transition"
+                                title="Editar rascunho"
+                              >
+                                <FileEdit className="w-3 h-3" />
+                                <span>Editar</span>
+                              </Link>
+                            )}
+                            <Link
+                              href={`/pedidos/${p.id}`}
+                              className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-800 font-semibold"
+                            >
+                              <span>Detalhes</span>
+                              <ChevronRight className="w-3.5 h-3.5" />
+                            </Link>
+                          </div>
                         </td>
                       </tr>
                     );
