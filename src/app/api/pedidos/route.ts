@@ -153,6 +153,13 @@ export async function POST(request: Request) {
       );
     }
 
+    if (cliente.vendedorId && cliente.vendedorId !== vendedorId) {
+      return NextResponse.json(
+        { error: "O cliente selecionado não pertence à carteira do vendedor informado." },
+        { status: 400 }
+      );
+    }
+
     // 2. Se for CONFIRMADO, deve conter pelo menos 1 item
     if (status === "CONFIRMADO" && (!itens || itens.length === 0)) {
       return NextResponse.json(

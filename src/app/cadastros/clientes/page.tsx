@@ -10,8 +10,14 @@ import {
   Search,
   AlertCircle,
   Building,
+  UserCheck,
 } from "lucide-react";
 import { formatCnpj } from "@/lib/cnpj.ts";
+
+interface Vendedor {
+  id: string;
+  nome: string;
+}
 
 interface Cliente {
   id: string;
@@ -19,6 +25,11 @@ interface Cliente {
   nomeFantasia: string | null;
   cnpj: string | null;
   cnpjNormalized: string | null;
+  vendedorId: string | null;
+  vendedor: {
+    id: string;
+    nome: string;
+  } | null;
   telefone: string | null;
   email: string | null;
   endereco: string | null;
@@ -31,6 +42,8 @@ interface Cliente {
 
 export default function ClientesPage() {
   const [clientes, setClientes] = useState<Cliente[]>([]);
+  const [vendedores, setVendedores] = useState<Vendedor[]>([]);
+  const [filtroVendedorId, setFiltroVendedorId] = useState("");
   const [busca, setBusca] = useState("");
   const [loading, setLoading] = useState(true);
 
@@ -40,6 +53,7 @@ export default function ClientesPage() {
   const [razaoSocialOuNome, setRazaoSocialOuNome] = useState("");
   const [nomeFantasia, setNomeFantasia] = useState("");
   const [cnpj, setCnpj] = useState("");
+  const [vendedorId, setVendedorId] = useState("");
   const [telefone, setTelefone] = useState("");
   const [email, setEmail] = useState("");
   const [endereco, setEndereco] = useState("");
@@ -53,7 +67,10 @@ export default function ClientesPage() {
   const carregarClientes = async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/clientes");
+      const url = filtroVendedorId
+        ? `/api/clientes?vendedorId=${filtroVendedorId}`
+        : "/api/clientes";
+      const res = await fetch(url);
       if (res.ok) {
         setClientes(await res.json());
       }
@@ -64,15 +81,31 @@ export default function ClientesPage() {
     }
   };
 
+  const carregarVendedores = async () => {
+    try {
+      const res = await fetch("/api/vendedores?ativos=true");
+      if (res.ok) {
+        setVendedores(await res.json());
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  useEffect(() => {
+    carregarVendedores();
+  }, []);
+
   useEffect(() => {
     carregarClientes();
-  }, []);
+  }, [filtroVendedorId]);
 
   const abrirCriacao = () => {
     setEditandoId(null);
     setRazaoSocialOuNome("");
     setNomeFantasia("");
     setCnpj("");
+    setVendedorId(filtroVendedorId || (vendedores[0]?.id || ""));
     setTelefone("");
     setEmail("");
     setEndereco("");
@@ -88,6 +121,7 @@ export default function ClientesPage() {
     setRazaoSocialOuNome(c.razaoSocialOuNome);
     setNomeFantasia(c.nomeFantasia || "");
     setCnpj(c.cnpj || "");
+    setVendedorId(c.vendedorId || "");
     setTelefone(c.telefone || "");
     setEmail(c.email || "");
     setEndereco(c.endereco || "");
@@ -115,6 +149,7 @@ export default function ClientesPage() {
           razaoSocialOuNome,
           nomeFantasia,
           cnpj,
+          vendedorId,
           telefone,
           email,
           endereco,
@@ -160,7 +195,8 @@ export default function ClientesPage() {
     (c) =>
       c.razaoSocialOuNome.toLowerCase().includes(busca.toLowerCase()) ||
       (c.nomeFantasia && c.nomeFantasia.toLowerCase().includes(busca.toLowerCase())) ||
-      (c.cnpj && c.cnpj.includes(busca))
+      (c.cnpj && c.cnpj.includes(busca)) ||
+      (c.vendedor?.nome && c.vendedor.nome.toLowerCase().includes(busca.toLowerCase()))
   );
 
   return (
@@ -169,7 +205,7 @@ export default function ClientesPage() {
         <div>
           <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Clientes Compradores</h1>
           <p className="text-sm text-slate-500 mt-0.5">
-            Cadastro compartilhado entre todos os frigoríficos &bull; Histórico individual de compras
+            Carteiras de clientes organizadas por vendedor &bull; Histórico individual de compras
           </p>
         </div>
         <button
@@ -190,16 +226,43 @@ export default function ClientesPage() {
         </div>
       )}
 
-      {/* Busca */}
-      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex items-center gap-3">
-        <Search className="w-4 h-4 text-slate-400" />
-        <input
-          type="text"
-          placeholder="Buscar por razão social, nome fantasia ou CNPJ..."
-          value={busca}
-          onChange={(e) => setBusca(e.target.value)}
-          className="w-full text-xs bg-transparent focus:outline-hidden"
-        />
+      {/* Filtros e Busca */}
+      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs grid grid-cols-1 md:grid-cols-3 gap-3">
+        {/* Filtro por Vendedor */}
+        <div>
+          <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
+            Carteira do Vendedor
+          </label>
+          <select
+            value={filtroVendedorId}
+            onChange={(e) => setFiltroVendedorId(e.target.value)}
+            className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-blue-500 font-semibold"
+          >
+            <option value="">Todos os Vendedores</option>
+            {vendedores.map((v) => (
+              <option key={v.id} value={v.id}>
+                {v.nome}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Busca por Razão Social, Nome Fantasia ou CNPJ */}
+        <div className="md:col-span-2">
+          <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
+            Buscar Cliente
+          </label>
+          <div className="relative">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+            <input
+              type="text"
+              placeholder="Buscar por razão social, nome fantasia, CNPJ ou vendedor..."
+              value={busca}
+              onChange={(e) => setBusca(e.target.value)}
+              className="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+        </div>
       </div>
 
       {/* Lista de Clientes */}
@@ -217,6 +280,7 @@ export default function ClientesPage() {
                 <tr>
                   <th className="py-3 px-4">Nome / Razão Social</th>
                   <th className="py-3 px-4">Nome Fantasia</th>
+                  <th className="py-3 px-4">Vendedor Responsável</th>
                   <th className="py-3 px-4">CNPJ</th>
                   <th className="py-3 px-4">Telefone</th>
                   <th className="py-3 px-4">Pedidos Realizados</th>
@@ -232,6 +296,18 @@ export default function ClientesPage() {
                     </td>
                     <td className="py-3 px-4 text-slate-600">
                       {c.nomeFantasia || "-"}
+                    </td>
+                    <td className="py-3 px-4">
+                      {c.vendedor ? (
+                        <span className="inline-flex items-center gap-1 font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-md border border-blue-200">
+                          <UserCheck className="w-3 h-3" />
+                          {c.vendedor.nome}
+                        </span>
+                      ) : (
+                        <span className="text-slate-400 font-sans italic text-[11px]">
+                          Não vinculado
+                        </span>
+                      )}
                     </td>
                     <td className="py-3 px-4 font-mono text-slate-600">
                       {c.cnpj || (
@@ -323,6 +399,29 @@ export default function ClientesPage() {
                   placeholder="Ex: Alvorada Supermercados"
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-blue-500"
                 />
+              </div>
+
+              {/* Vendedor Responsável */}
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">
+                  Vendedor Responsável (Carteira do Vendedor) *
+                </label>
+                <select
+                  required
+                  value={vendedorId}
+                  onChange={(e) => setVendedorId(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-blue-500 font-semibold"
+                >
+                  <option value="">Selecione o vendedor...</option>
+                  {vendedores.map((v) => (
+                    <option key={v.id} value={v.id}>
+                      {v.nome}
+                    </option>
+                  ))}
+                </select>
+                <span className="text-[10px] text-slate-400">
+                  Cada vendedor terá sua lista própria de clientes para negociar pedidos.
+                </span>
               </div>
 
               <div className="grid grid-cols-2 gap-3">

@@ -12,7 +12,7 @@ test("Motor de Sugestão de Preços - Prioridades", async () => {
     where: { frigorificoId: frigorifico.id, codigo: "101" }, // Picanha, ref: 68.90
   });
   const cliente = await prisma.cliente.findFirstOrThrow({
-    where: { nomeFantasia: "Supermercado Progresso" },
+    where: { ativo: true },
   });
   const vendedor = await prisma.vendedor.findFirstOrThrow();
 

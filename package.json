@@ -10,6 +10,8 @@
     "seed": "node --experimental-strip-types src/scripts/seed.ts",
     "backup": "node --experimental-strip-types src/scripts/backup.ts",
     "restore": "node --experimental-strip-types src/scripts/restore.ts",
+    "db:modelos": "node --experimental-strip-types src/scripts/gerar-modelos.ts",
+    "db:import": "node --experimental-strip-types src/scripts/import-excel.ts",
     "test": "node --test --experimental-strip-types tests/*.test.ts"
   },
   "dependencies": {
@@ -23,7 +25,8 @@
     "prisma": "6.4.1",
     "react": "19.3.0",
     "react-dom": "19.3.0",
-    "tailwind-merge": "^3.7.0"
+    "tailwind-merge": "^3.7.0",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.3.3",

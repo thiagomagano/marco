@@ -33,6 +33,7 @@ interface Cliente {
   razaoSocialOuNome: string;
   nomeFantasia: string | null;
   cnpj: string | null;
+  vendedorId: string | null;
 }
 
 interface Vendedor {
@@ -174,6 +175,20 @@ export default function NovoPedidoPage() {
     }
   };
 
+  // Guarda: ao trocar de vendedor, ajusta o cliente selecionado
+  const handleVendedorChange = (novoVendedorId: string) => {
+    setVendedorId(novoVendedorId);
+    if (clienteId) {
+      const clienteAtual = clientes.find((c) => c.id === clienteId);
+      if (clienteAtual && clienteAtual.vendedorId !== novoVendedorId) {
+        setClienteId("");
+        if (itens.length > 0) {
+          setAvisoTrocaCliente(true);
+        }
+      }
+    }
+  };
+
   // Guarda 5.2.8: Alerta ao trocar de cliente
   const handleClienteChange = (novoClienteId: string) => {
     if (itens.length > 0 && novoClienteId !== clienteId) {
@@ -277,8 +292,8 @@ export default function NovoPedidoPage() {
     setLoading(true);
 
     try {
-      if (!frigorificoId || !clienteId || !vendedorId) {
-        throw new Error("Selecione o Frigorífico, o Cliente e o Vendedor.");
+      if (!frigorificoId || !vendedorId || !clienteId) {
+        throw new Error("Selecione o Frigorífico, o Vendedor e o Cliente.");
       }
 
       if (statusDestino === "CONFIRMADO") {
@@ -376,7 +391,7 @@ export default function NovoPedidoPage() {
         <div>
           <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Novo Pedido Comercial</h1>
           <p className="text-sm text-slate-500 mt-1">
-            Selecione o frigorífico, cliente comprador, vendedor e adicione os cortes negociados.
+            Selecione o frigorífico, o vendedor responsável e o cliente comprador da carteira.
           </p>
         </div>
 
@@ -392,7 +407,7 @@ export default function NovoPedidoPage() {
             <div className="flex items-center gap-2">
               <Info className="w-4 h-4 text-blue-600 shrink-0" />
               <span>
-                O cliente foi alterado. Os preços sugeridos podem variar com base no histórico do novo cliente.
+                O vendedor ou cliente foi alterado. Os preços sugeridos podem variar com base no histórico do novo cliente.
               </span>
             </div>
             <button
@@ -404,9 +419,9 @@ export default function NovoPedidoPage() {
           </div>
         )}
 
-        {/* 1. SELEÇÃO COMERCIAL: Frigorífico, Cliente, Vendedor */}
+        {/* 1. SELEÇÃO COMERCIAL: Frigorífico, Vendedor, Cliente */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pb-6 border-b border-slate-200">
-          {/* Frigorífico */}
+          {/* 1. Frigorífico */}
           <div>
             <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
               1. Frigorífico Representado *
@@ -428,37 +443,14 @@ export default function NovoPedidoPage() {
             </p>
           </div>
 
-          {/* Cliente */}
+          {/* 2. Vendedor */}
           <div>
             <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-              2. Cliente Comprador *
-            </label>
-            <select
-              value={clienteId}
-              onChange={(e) => handleClienteChange(e.target.value)}
-              className="w-full px-3.5 py-2.5 text-sm bg-white border border-slate-300 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-blue-500 font-medium"
-            >
-              <option value="">Selecione o Cliente...</option>
-              {clientes.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.nomeFantasia ? `${c.nomeFantasia} (${c.razaoSocialOuNome})` : c.razaoSocialOuNome}
-                  {c.cnpj ? ` - CNPJ: ${c.cnpj}` : ""}
-                </option>
-              ))}
-            </select>
-            <p className="text-[11px] text-slate-400 mt-1">
-              Base de clientes compartilhada entre frigoríficos.
-            </p>
-          </div>
-
-          {/* Vendedor */}
-          <div>
-            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-              3. Vendedor Responsável *
+              2. Vendedor Responsável *
             </label>
             <select
               value={vendedorId}
-              onChange={(e) => setVendedorId(e.target.value)}
+              onChange={(e) => handleVendedorChange(e.target.value)}
               className="w-full px-3.5 py-2.5 text-sm bg-white border border-slate-300 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-blue-500 font-medium"
             >
               <option value="">Selecione o Vendedor...</option>
@@ -469,8 +461,50 @@ export default function NovoPedidoPage() {
               ))}
             </select>
             <p className="text-[11px] text-slate-400 mt-1">
-              Responsável comercial pela venda.
+              Selecione o vendedor para carregar seus clientes.
             </p>
+          </div>
+
+          {/* 3. Cliente */}
+          <div>
+            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+              3. Cliente Comprador *
+            </label>
+            {(() => {
+              const clientesDoVendedor = vendedorId
+                ? clientes.filter((c) => c.vendedorId === vendedorId)
+                : [];
+
+              return (
+                <>
+                  <select
+                    disabled={!vendedorId}
+                    value={clienteId}
+                    onChange={(e) => handleClienteChange(e.target.value)}
+                    className="w-full px-3.5 py-2.5 text-sm bg-white border border-slate-300 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-blue-500 font-medium disabled:bg-slate-100 disabled:text-slate-400"
+                  >
+                    <option value="">
+                      {!vendedorId
+                        ? "Selecione o vendedor primeiro..."
+                        : clientesDoVendedor.length === 0
+                        ? "Nenhum cliente para este vendedor"
+                        : "Selecione o Cliente..."}
+                    </option>
+                    {clientesDoVendedor.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.nomeFantasia ? `${c.nomeFantasia} (${c.razaoSocialOuNome})` : c.razaoSocialOuNome}
+                        {c.cnpj ? ` - CNPJ: ${c.cnpj}` : ""}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    {!vendedorId
+                      ? "Disponível após selecionar o vendedor."
+                      : `${clientesDoVendedor.length} cliente(s) na carteira deste vendedor.`}
+                  </p>
+                </>
+              );
+            })()}
           </div>
         </div>
 

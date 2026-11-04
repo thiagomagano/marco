@@ -43,11 +43,24 @@ export async function DELETE(
     await requireAuth();
     const { id } = await params;
 
-    const countPedidos = await prisma.pedido.count({ where: { vendedorId: id } });
+    const [countPedidos, countClientes] = await Promise.all([
+      prisma.pedido.count({ where: { vendedorId: id } }),
+      prisma.cliente.count({ where: { vendedorId: id } }),
+    ]);
+
     if (countPedidos > 0) {
       return NextResponse.json(
         {
           error: `Este vendedor possui ${countPedidos} pedido(s) registrado(s) e não pode ser excluído fisicamente. Utilize a inativação.`,
+        },
+        { status: 400 }
+      );
+    }
+
+    if (countClientes > 0) {
+      return NextResponse.json(
+        {
+          error: `Este vendedor possui ${countClientes} cliente(s) vinculado(s) e não pode ser excluído fisicamente. Reatribua os clientes ou inative o vendedor.`,
         },
         { status: 400 }
       );

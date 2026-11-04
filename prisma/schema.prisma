@@ -65,7 +65,12 @@ model Cliente {
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
+  vendedorId        String?
+  vendedor          Vendedor? @relation(fields: [vendedorId], references: [id])
+
   pedidos           Pedido[]
+
+  @@index([vendedorId])
 }
 
 model Vendedor {
@@ -77,6 +82,7 @@ model Vendedor {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
+  clientes    Cliente[]
   pedidos     Pedido[]
 }
 

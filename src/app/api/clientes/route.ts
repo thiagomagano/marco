@@ -9,10 +9,12 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const apenasAtivos = searchParams.get("ativos") === "true";
     const busca = searchParams.get("busca")?.trim();
+    const vendedorId = searchParams.get("vendedorId")?.trim();
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const where: any = {};
     if (apenasAtivos) where.ativo = true;
+    if (vendedorId) where.vendedorId = vendedorId;
     if (busca) {
       where.OR = [
         { razaoSocialOuNome: { contains: busca } },
@@ -25,6 +27,9 @@ export async function GET(request: Request) {
       where,
       orderBy: { razaoSocialOuNome: "asc" },
       include: {
+        vendedor: {
+          select: { id: true, nome: true },
+        },
         _count: {
           select: { pedidos: true },
         },
@@ -48,6 +53,7 @@ export async function POST(request: Request) {
       razaoSocialOuNome,
       nomeFantasia,
       cnpj,
+      vendedorId,
       telefone,
       email,
       endereco,
@@ -57,6 +63,23 @@ export async function POST(request: Request) {
     if (!razaoSocialOuNome || !razaoSocialOuNome.trim()) {
       return NextResponse.json(
         { error: "Razão social ou nome do cliente é obrigatório." },
+        { status: 400 }
+      );
+    }
+
+    if (!vendedorId || !vendedorId.trim()) {
+      return NextResponse.json(
+        { error: "Vendedor responsável é obrigatório." },
+        { status: 400 }
+      );
+    }
+
+    const vendedorExiste = await prisma.vendedor.findUnique({
+      where: { id: vendedorId.trim() },
+    });
+    if (!vendedorExiste || !vendedorExiste.ativo) {
+      return NextResponse.json(
+        { error: "Vendedor selecionado não existe ou está inativo." },
         { status: 400 }
       );
     }
@@ -107,11 +130,17 @@ export async function POST(request: Request) {
         nomeFantasia: nomeFantasia?.trim() || null,
         cnpj: formattedCnpj,
         cnpjNormalized: normalizedCnpj,
+        vendedorId: vendedorId.trim(),
         telefone: telefone?.trim() || null,
         email: email?.trim() || null,
         endereco: endereco?.trim() || null,
         observacoes: observacoes?.trim() || null,
         ativo: true,
+      },
+      include: {
+        vendedor: {
+          select: { id: true, nome: true },
+        },
       },
     });
 

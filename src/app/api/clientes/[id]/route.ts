@@ -46,6 +46,20 @@ export async function PATCH(
       }
     }
 
+    let vendedorIdAtualizado = cliente.vendedorId;
+    if (body.vendedorId !== undefined) {
+      if (body.vendedorId && body.vendedorId.trim()) {
+        const vId = body.vendedorId.trim();
+        const vendedorExiste = await prisma.vendedor.findUnique({ where: { id: vId } });
+        if (!vendedorExiste || !vendedorExiste.ativo) {
+          return NextResponse.json({ error: "Vendedor selecionado não existe ou está inativo." }, { status: 400 });
+        }
+        vendedorIdAtualizado = vId;
+      } else {
+        vendedorIdAtualizado = null;
+      }
+    }
+
     const atualizado = await prisma.cliente.update({
       where: { id },
       data: {
@@ -53,11 +67,17 @@ export async function PATCH(
         nomeFantasia: body.nomeFantasia !== undefined ? body.nomeFantasia?.trim() || null : cliente.nomeFantasia,
         cnpj: formattedCnpj,
         cnpjNormalized: normalizedCnpj,
+        vendedorId: vendedorIdAtualizado,
         telefone: body.telefone !== undefined ? body.telefone?.trim() || null : cliente.telefone,
         email: body.email !== undefined ? body.email?.trim() || null : cliente.email,
         endereco: body.endereco !== undefined ? body.endereco?.trim() || null : cliente.endereco,
         observacoes: body.observacoes !== undefined ? body.observacoes?.trim() || null : cliente.observacoes,
         ativo: body.ativo !== undefined ? Boolean(body.ativo) : cliente.ativo,
+      },
+      include: {
+        vendedor: {
+          select: { id: true, nome: true },
+        },
       },
     });
 

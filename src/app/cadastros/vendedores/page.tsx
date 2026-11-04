@@ -17,6 +17,7 @@ interface Vendedor {
   observacoes: string | null;
   ativo: boolean;
   _count: {
+    clientes: number;
     pedidos: number;
   };
 }
@@ -200,7 +201,7 @@ export default function VendedoresPage() {
 
               <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
                 <span className="text-slate-500 font-medium">
-                  {v._count.pedidos} pedidos associados
+                  {v._count.clientes || 0} clientes &bull; {v._count.pedidos} pedidos
                 </span>
 
                 <div className="flex items-center gap-2">

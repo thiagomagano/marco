@@ -69,7 +69,7 @@ export default function PedidosPage() {
 
   // Listas auxiliares para os selects de filtro
   const [frigorificos, setFrigorificos] = useState<Array<{ id: string; nomeFantasia: string }>>([]);
-  const [clientes, setClientes] = useState<Array<{ id: string; razaoSocialOuNome: string; nomeFantasia: string | null }>>([]);
+  const [clientes, setClientes] = useState<Array<{ id: string; razaoSocialOuNome: string; nomeFantasia: string | null; vendedorId?: string | null }>>([]);
   const [vendedores, setVendedores] = useState<Array<{ id: string; nome: string }>>([]);
 
   // Carrega opções dos filtros
@@ -209,6 +209,34 @@ export default function PedidosPage() {
             </select>
           </div>
 
+          {/* Vendedor */}
+          <div>
+            <label className="block text-xs font-semibold text-slate-600 mb-1">
+              Vendedor
+            </label>
+            <select
+              value={vendedorId}
+              onChange={(e) => {
+                const novoVend = e.target.value;
+                setVendedorId(novoVend);
+                if (clienteId && novoVend) {
+                  const c = clientes.find((cli) => cli.id === clienteId);
+                  if (c && c.vendedorId && c.vendedorId !== novoVend) {
+                    setClienteId("");
+                  }
+                }
+              }}
+              className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">Todos os Vendedores</option>
+              {vendedores.map((v) => (
+                <option key={v.id} value={v.id}>
+                  {v.nome}
+                </option>
+              ))}
+            </select>
+          </div>
+
           {/* Cliente */}
           <div>
             <label className="block text-xs font-semibold text-slate-600 mb-1">
@@ -219,29 +247,15 @@ export default function PedidosPage() {
               onChange={(e) => setClienteId(e.target.value)}
               className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-blue-500"
             >
-              <option value="">Todos os Clientes</option>
-              {clientes.map((c) => (
+              <option value="">
+                {vendedorId ? "Todos os Clientes deste Vendedor" : "Todos os Clientes"}
+              </option>
+              {(vendedorId
+                ? clientes.filter((c) => c.vendedorId === vendedorId)
+                : clientes
+              ).map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.nomeFantasia || c.razaoSocialOuNome}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Vendedor */}
-          <div>
-            <label className="block text-xs font-semibold text-slate-600 mb-1">
-              Vendedor
-            </label>
-            <select
-              value={vendedorId}
-              onChange={(e) => setVendedorId(e.target.value)}
-              className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="">Todos os Vendedores</option>
-              {vendedores.map((v) => (
-                <option key={v.id} value={v.id}>
-                  {v.nome}
                 </option>
               ))}
             </select>

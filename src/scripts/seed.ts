@@ -160,10 +160,39 @@ async function main() {
 
   console.log("Produtos cadastrados para ambos os frigoríficos.");
 
-  // 4. Clientes Compartilhados
-  const cliente1 = await prisma.cliente.upsert({
-    where: { cnpjNormalized: "00000000000191" }, // Banco do Brasil CNPJ de teste ou outro válido: 11.222.333/0001-81
+  // 4. Vendedores
+  const vendedor1 = await prisma.vendedor.upsert({
+    where: { id: "vend-carlos" },
     update: {},
+    create: {
+      id: "vend-carlos",
+      nome: "Carlos Eduardo Silva",
+      telefone: "(11) 98111-2233",
+      observacoes: "Responsável pela rota Zona Sul.",
+      ativo: true,
+    },
+  });
+
+  const vendedor2 = await prisma.vendedor.upsert({
+    where: { id: "vend-mariana" },
+    update: {},
+    create: {
+      id: "vend-mariana",
+      nome: "Mariana Souza Santos",
+      telefone: "(11) 98222-3344",
+      observacoes: "Responsável por grandes redes e restaurantes.",
+      ativo: true,
+    },
+  });
+
+  console.log("Vendedores cadastrados.");
+
+  // 5. Clientes Compartilhados (vinculados a Vendedores)
+  const cliente1 = await prisma.cliente.upsert({
+    where: { cnpjNormalized: "11222333000181" },
+    update: {
+      vendedorId: vendedor1.id,
+    },
     create: {
       razaoSocialOuNome: "Supermercado Progresso da Serra Ltda",
       nomeFantasia: "Supermercado Progresso",
@@ -173,13 +202,16 @@ async function main() {
       email: "compras@progresso.com.br",
       endereco: "Av. Central, 1200 - Centro",
       observacoes: "Recebe cargas até as 11h.",
+      vendedorId: vendedor1.id,
       ativo: true,
     },
   });
 
   const cliente2 = await prisma.cliente.upsert({
     where: { cnpjNormalized: "22333444000122" },
-    update: {},
+    update: {
+      vendedorId: vendedor2.id,
+    },
     create: {
       razaoSocialOuNome: "Churrascaria Fogo de Chão & Brasa Eireli",
       nomeFantasia: "Churrascaria Fogo Nobre",
@@ -188,11 +220,12 @@ async function main() {
       telefone: "(11) 97654-3210",
       email: "financeiro@fogonobre.com.br",
       endereco: "Rua das Oliveiras, 45",
+      vendedorId: vendedor2.id,
       ativo: true,
     },
   });
 
-  // Cliente sem CNPJ (permitido pela especificação)
+  // Cliente sem CNPJ (vinculado ao vendedor1)
   const cliente3 = await prisma.cliente.findFirst({
     where: { razaoSocialOuNome: "Açougue e Boutique do Bairro" },
   });
@@ -204,44 +237,18 @@ async function main() {
         telefone: "(11) 98888-7777",
         endereco: "Rua do Comércio, 310",
         observacoes: "Cliente tradicional, pagamento semanal.",
+        vendedorId: vendedor1.id,
         ativo: true,
       },
     });
-  }
-
-  console.log("Clientes cadastrados.");
-
-  // 5. Vendedores
-  const vendedores = [
-    {
-      nome: "Carlos Eduardo Silva",
-      telefone: "(11) 98111-2233",
-      observacoes: "Responsável pela rota Zona Sul.",
-    },
-    {
-      nome: "Mariana Souza Santos",
-      telefone: "(11) 98222-3344",
-      observacoes: "Responsável por grandes redes e restaurantes.",
-    },
-  ];
-
-  for (const v of vendedores) {
-    const existing = await prisma.vendedor.findFirst({
-      where: { nome: v.nome },
+  } else {
+    await prisma.cliente.update({
+      where: { id: cliente3.id },
+      data: { vendedorId: vendedor1.id },
     });
-    if (!existing) {
-      await prisma.vendedor.create({
-        data: {
-          nome: v.nome,
-          telefone: v.telefone,
-          observacoes: v.observacoes,
-          ativo: true,
-        },
-      });
-    }
   }
 
-  console.log("Vendedores cadastrados.");
+  console.log("Clientes cadastrados e vinculados aos vendedores.");
   console.log("Seed concluído com sucesso!");
 }
 
