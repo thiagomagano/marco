@@ -20,6 +20,8 @@ export async function GET(request: Request) {
         { razaoSocialOuNome: { contains: busca } },
         { nomeFantasia: { contains: busca } },
         { cnpjNormalized: { contains: normalizeCnpj(busca) || busca } },
+        { cidade: { contains: busca } },
+        { bairro: { contains: busca } },
       ];
     }
 
@@ -57,6 +59,9 @@ export async function POST(request: Request) {
       telefone,
       email,
       endereco,
+      bairro,
+      cidade,
+      cep,
       observacoes,
     } = body;
 
@@ -134,6 +139,9 @@ export async function POST(request: Request) {
         telefone: telefone?.trim() || null,
         email: email?.trim() || null,
         endereco: endereco?.trim() || null,
+        bairro: bairro?.trim() || null,
+        cidade: cidade?.trim() || null,
+        cep: cep?.trim() || null,
         observacoes: observacoes?.trim() || null,
         ativo: true,
       },

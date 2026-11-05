@@ -71,7 +71,12 @@ async function importarClientes(filePath: string, isDryRun: boolean) {
 
     const telefone = String(row["telefone"] || row["tel"] || row["celular"] || "").trim();
     const email = String(row["email"] || row["correioeletronico"] || "").trim();
-    const endereco = String(row["endereco"] || row["rua"] || row["local"] || "").trim();
+    const endereco = String(row["endereco"] || row["rua"] || row["logradouro"] || row["local"] || "").trim();
+    const bairro = String(row["bairro"] || row["distrito"] || "").trim();
+    const cidade = String(row["cidade"] || row["municipio"] || row["cidadeuf"] || "").trim();
+    const rawCep = String(row["cep"] || row["codigopostal"] || "").trim();
+    const cepDigits = rawCep.replace(/\D/g, "");
+    const cep = cepDigits.length === 8 ? `${cepDigits.slice(0, 5)}-${cepDigits.slice(5)}` : (rawCep || "");
     const observacoes = String(row["observacoes"] || row["obs"] || "").trim();
 
     // Validação 1: Razão Social obrigatória
@@ -158,6 +163,9 @@ async function importarClientes(filePath: string, isDryRun: boolean) {
               telefone: telefone || clienteExistente.telefone,
               email: email || clienteExistente.email,
               endereco: endereco || clienteExistente.endereco,
+              bairro: bairro || clienteExistente.bairro,
+              cidade: cidade || clienteExistente.cidade,
+              cep: (cep || clienteExistente.cep) || null,
               observacoes: observacoes || clienteExistente.observacoes,
             },
           });
@@ -173,6 +181,9 @@ async function importarClientes(filePath: string, isDryRun: boolean) {
               telefone: telefone || null,
               email: email || null,
               endereco: endereco || null,
+              bairro: bairro || null,
+              cidade: cidade || null,
+              cep: cep || null,
               observacoes: observacoes || null,
               ativo: true,
             },
@@ -194,6 +205,9 @@ async function importarClientes(filePath: string, isDryRun: boolean) {
               telefone: telefone || clienteExistente.telefone,
               email: email || clienteExistente.email,
               endereco: endereco || clienteExistente.endereco,
+              bairro: bairro || clienteExistente.bairro,
+              cidade: cidade || clienteExistente.cidade,
+              cep: (cep || clienteExistente.cep) || null,
               observacoes: observacoes || clienteExistente.observacoes,
             },
           });
@@ -207,6 +221,9 @@ async function importarClientes(filePath: string, isDryRun: boolean) {
               telefone: telefone || null,
               email: email || null,
               endereco: endereco || null,
+              bairro: bairro || null,
+              cidade: cidade || null,
+              cep: cep || null,
               observacoes: observacoes || null,
               ativo: true,
             },

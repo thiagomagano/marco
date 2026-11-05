@@ -67,4 +67,7 @@ test("Excel Utils - Leitura e Parsing de Arquivo .xlsx", () => {
   assert.equal(rows.length, 3);
   assert.equal(rows[0].razaosocial, "Supermercado Exemplo Ltda");
   assert.equal(rows[0].vendedor, "Carlos Eduardo Silva");
+  assert.equal(rows[0].bairro, "Centro");
+  assert.equal(rows[0].cidade, "São Paulo - SP");
+  assert.equal(rows[0].cep, "01001-000");
 });

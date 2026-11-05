@@ -52,6 +52,9 @@ interface PedidoDetalhes {
     cnpj: string | null;
     telefone: string | null;
     endereco: string | null;
+    bairro: string | null;
+    cidade: string | null;
+    cep: string | null;
   };
   vendedor: {
     nome: string;
@@ -331,9 +334,22 @@ export default function DetalhesPedidoPage({
             {pedido.cliente.cnpj && (
               <div className="text-slate-500">CNPJ: {pedido.cliente.cnpj}</div>
             )}
-            {pedido.cliente.endereco && (
-              <div className="text-slate-500">Endereço: {pedido.cliente.endereco}</div>
-            )}
+            {(() => {
+              const partesEndereco = [
+                pedido.cliente.endereco,
+                pedido.cliente.bairro ? `Bairro ${pedido.cliente.bairro}` : null,
+                pedido.cliente.cidade,
+                pedido.cliente.cep ? `CEP ${pedido.cliente.cep}` : null,
+              ].filter(Boolean);
+
+              if (partesEndereco.length === 0) return null;
+              return (
+                <div className="text-slate-500">
+                  <span className="font-semibold text-slate-700">Endereço: </span>
+                  {partesEndereco.join(" • ")}
+                </div>
+              );
+            })()}
           </div>
 
           {/* Vendedor */}

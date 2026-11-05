@@ -33,6 +33,9 @@ interface Cliente {
   telefone: string | null;
   email: string | null;
   endereco: string | null;
+  bairro: string | null;
+  cidade: string | null;
+  cep: string | null;
   observacoes: string | null;
   ativo: boolean;
   _count: {
@@ -57,6 +60,9 @@ export default function ClientesPage() {
   const [telefone, setTelefone] = useState("");
   const [email, setEmail] = useState("");
   const [endereco, setEndereco] = useState("");
+  const [bairro, setBairro] = useState("");
+  const [cidade, setCidade] = useState("");
+  const [cep, setCep] = useState("");
   const [observacoes, setObservacoes] = useState("");
   const [ativo, setAtivo] = useState(true);
 
@@ -109,6 +115,9 @@ export default function ClientesPage() {
     setTelefone("");
     setEmail("");
     setEndereco("");
+    setBairro("");
+    setCidade("");
+    setCep("");
     setObservacoes("");
     setAtivo(true);
     setFormErro(null);
@@ -125,6 +134,9 @@ export default function ClientesPage() {
     setTelefone(c.telefone || "");
     setEmail(c.email || "");
     setEndereco(c.endereco || "");
+    setBairro(c.bairro || "");
+    setCidade(c.cidade || "");
+    setCep(c.cep || "");
     setObservacoes(c.observacoes || "");
     setAtivo(c.ativo);
     setFormErro(null);
@@ -153,6 +165,9 @@ export default function ClientesPage() {
           telefone,
           email,
           endereco,
+          bairro,
+          cidade,
+          cep,
           observacoes,
           ativo,
         }),
@@ -196,7 +211,9 @@ export default function ClientesPage() {
       c.razaoSocialOuNome.toLowerCase().includes(busca.toLowerCase()) ||
       (c.nomeFantasia && c.nomeFantasia.toLowerCase().includes(busca.toLowerCase())) ||
       (c.cnpj && c.cnpj.includes(busca)) ||
-      (c.vendedor?.nome && c.vendedor.nome.toLowerCase().includes(busca.toLowerCase()))
+      (c.vendedor?.nome && c.vendedor.nome.toLowerCase().includes(busca.toLowerCase())) ||
+      (c.cidade && c.cidade.toLowerCase().includes(busca.toLowerCase())) ||
+      (c.bairro && c.bairro.toLowerCase().includes(busca.toLowerCase()))
   );
 
   return (
@@ -256,7 +273,7 @@ export default function ClientesPage() {
             <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
             <input
               type="text"
-              placeholder="Buscar por razão social, nome fantasia, CNPJ ou vendedor..."
+              placeholder="Buscar por razão social, nome fantasia, CNPJ, vendedor, cidade ou bairro..."
               value={busca}
               onChange={(e) => setBusca(e.target.value)}
               className="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-blue-500"
@@ -281,6 +298,7 @@ export default function ClientesPage() {
                   <th className="py-3 px-4">Nome / Razão Social</th>
                   <th className="py-3 px-4">Nome Fantasia</th>
                   <th className="py-3 px-4">Vendedor Responsável</th>
+                  <th className="py-3 px-4">Cidade / Bairro</th>
                   <th className="py-3 px-4">CNPJ</th>
                   <th className="py-3 px-4">Telefone</th>
                   <th className="py-3 px-4">Pedidos Realizados</th>
@@ -307,6 +325,20 @@ export default function ClientesPage() {
                         <span className="text-slate-400 font-sans italic text-[11px]">
                           Não vinculado
                         </span>
+                      )}
+                    </td>
+                    <td className="py-3 px-4 text-slate-600">
+                      {c.cidade ? (
+                        <div>
+                          <span className="font-semibold text-slate-800">{c.cidade}</span>
+                          {c.bairro && (
+                            <span className="text-slate-400 text-[11px] block">{c.bairro}</span>
+                          )}
+                        </div>
+                      ) : c.bairro ? (
+                        <span className="text-slate-700">{c.bairro}</span>
+                      ) : (
+                        <span className="text-slate-400 italic text-[11px]">-</span>
                       )}
                     </td>
                     <td className="py-3 px-4 font-mono text-slate-600">
@@ -361,7 +393,7 @@ export default function ClientesPage() {
         <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
           <form
             onSubmit={salvar}
-            className="bg-white rounded-2xl max-w-lg w-full p-6 sm:p-8 shadow-xl space-y-4"
+            className="bg-white rounded-2xl max-w-xl w-full p-6 sm:p-8 shadow-xl space-y-4 max-h-[90vh] overflow-y-auto"
           >
             <h2 className="text-base font-bold text-slate-900">
               {editandoId ? "Editar Cliente" : "Cadastrar Cliente"}
@@ -453,17 +485,71 @@ export default function ClientesPage() {
                 </div>
               </div>
 
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">
-                  Endereço Comercial (Opcional)
-                </label>
-                <input
-                  type="text"
-                  value={endereco}
-                  onChange={(e) => setEndereco(e.target.value)}
-                  placeholder="Rua, número, bairro, cidade - UF"
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-blue-500"
-                />
+              {/* Localização e Endereço Estruturado */}
+              <div className="pt-2 border-t border-slate-100 space-y-2">
+                <span className="block text-[11px] font-bold text-slate-600 uppercase tracking-wider">
+                  Endereço e Localização
+                </span>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">
+                      CEP (Opcional)
+                    </label>
+                    <input
+                      type="text"
+                      maxLength={9}
+                      value={cep}
+                      onChange={(e) => {
+                        const val = e.target.value.replace(/\D/g, "").slice(0, 8);
+                        setCep(val.length > 5 ? `${val.slice(0, 5)}-${val.slice(5)}` : val);
+                      }}
+                      placeholder="00000-000"
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-blue-500 font-mono"
+                    />
+                  </div>
+
+                  <div className="sm:col-span-2">
+                    <label className="block font-semibold text-slate-700 mb-1">
+                      Logradouro / Número
+                    </label>
+                    <input
+                      type="text"
+                      value={endereco}
+                      onChange={(e) => setEndereco(e.target.value)}
+                      placeholder="Rua, Av., Número, Sala, etc."
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">
+                      Bairro
+                    </label>
+                    <input
+                      type="text"
+                      value={bairro}
+                      onChange={(e) => setBairro(e.target.value)}
+                      placeholder="Ex: Setor Bueno"
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">
+                      Cidade / Município
+                    </label>
+                    <input
+                      type="text"
+                      value={cidade}
+                      onChange={(e) => setCidade(e.target.value)}
+                      placeholder="Ex: Goiânia - GO"
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
               </div>
 
               <div>

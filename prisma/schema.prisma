@@ -60,6 +60,9 @@ model Cliente {
   telefone          String?
   email             String?
   endereco          String?
+  bairro            String?
+  cidade            String?
+  cep               String?
   observacoes       String?
   ativo             Boolean   @default(true)
   createdAt         DateTime  @default(now())
