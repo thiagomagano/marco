@@ -50,6 +50,7 @@ interface Produto {
   frigorificoId: string;
   codigo: string;
   nome: string;
+  embalagem: string | null;
   unidade: string;
   precoReferencia: number | null;
 }
@@ -59,6 +60,7 @@ interface FormItem {
   produtoId: string;
   codigo: string;
   nome: string;
+  embalagem?: string | null;
   unidade: string;
   quantidade: number | string;
   precoUnitario: number | string;
@@ -141,6 +143,8 @@ export default function EditarPedidoPage({
               produtoCodigoSnapshot: string;
               produtoNomeSnapshot: string;
               produtoUnidadeSnapshot: string;
+              produtoEmbalagemSnapshot?: string | null;
+              produto?: { embalagem: string | null };
               quantidade: number;
               precoUnitario: number;
             }) => ({
@@ -149,6 +153,7 @@ export default function EditarPedidoPage({
               codigo: it.produtoCodigoSnapshot,
               nome: it.produtoNomeSnapshot,
               unidade: it.produtoUnidadeSnapshot,
+              embalagem: it.produtoEmbalagemSnapshot || it.produto?.embalagem || null,
               quantidade: it.quantidade,
               precoUnitario: it.precoUnitario,
               sugestaoOrigem: "HISTORICO",
@@ -282,6 +287,7 @@ export default function EditarPedidoPage({
               codigo: prod.codigo,
               nome: prod.nome,
               unidade: prod.unidade,
+              embalagem: prod.embalagem || null,
               precoUnitario: precoSugerido,
               sugestaoOrigem,
               sugestaoDetalhe,
@@ -652,15 +658,20 @@ export default function EditarPedidoPage({
                         <option value="">Selecione o produto...</option>
                         {produtosDisponiveis.map((p) => (
                           <option key={p.id} value={p.id}>
-                            [{p.codigo}] {p.nome} ({p.unidade})
+                            [{p.codigo}] {p.nome} ({p.unidade}){p.embalagem ? ` • Emb: ${p.embalagem}` : ""}
                           </option>
                         ))}
                       </select>
 
-                      {/* Badge da Sugestão de Preço */}
-                      {item.sugestaoOrigem && (
-                        <div className="mt-1 flex items-center gap-1 text-[10px]">
-                          {item.sugestaoOrigem === "HISTORICO" ? (
+                      {/* Badges de Embalagem e Preço */}
+                      <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px]">
+                        {item.embalagem && (
+                          <span className="text-slate-700 bg-slate-200/80 px-1.5 py-0.5 rounded-sm font-medium">
+                            Emb: {item.embalagem}
+                          </span>
+                        )}
+                        {item.sugestaoOrigem && (
+                          item.sugestaoOrigem === "HISTORICO" ? (
                             <span className="text-emerald-700 bg-emerald-100/70 px-1.5 py-0.5 rounded-sm font-semibold flex items-center gap-1">
                               <Sparkles className="w-3 h-3" />
                               {item.sugestaoDetalhe || "Último preço negociado"}
@@ -674,9 +685,9 @@ export default function EditarPedidoPage({
                             <span className="text-slate-500 bg-slate-200/60 px-1.5 py-0.5 rounded-sm">
                               Preço Manual
                             </span>
-                          )}
-                        </div>
-                      )}
+                          )
+                        )}
+                      </div>
                     </div>
 
                     {/* Quantidade */}

@@ -174,6 +174,7 @@ export async function POST(request: Request) {
       produtoCodigoSnapshot: string;
       produtoNomeSnapshot: string;
       produtoUnidadeSnapshot: string;
+      produtoEmbalagemSnapshot: string | null;
       quantidade: number;
       precoUnitario: number;
       subtotal: number;
@@ -238,6 +239,7 @@ export async function POST(request: Request) {
           produtoCodigoSnapshot: prod.codigo,
           produtoNomeSnapshot: prod.nome,
           produtoUnidadeSnapshot: prod.unidade,
+          produtoEmbalagemSnapshot: prod.embalagem || null,
           quantidade: qtd,
           precoUnitario: preco,
           subtotal,
@@ -274,6 +276,7 @@ export async function POST(request: Request) {
             produtoCodigoSnapshot: it.produtoCodigoSnapshot,
             produtoNomeSnapshot: it.produtoNomeSnapshot,
             produtoUnidadeSnapshot: it.produtoUnidadeSnapshot,
+            produtoEmbalagemSnapshot: it.produtoEmbalagemSnapshot,
             quantidade: it.quantidade,
             precoUnitario: it.precoUnitario,
             subtotal: it.subtotal,

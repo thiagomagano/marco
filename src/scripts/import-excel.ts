@@ -308,7 +308,10 @@ async function importarProdutos(
       row["nome"] || row["produto"] || row["descricao"] || row["corte"] || ""
     ).trim();
 
-    const rawUnidade = row["unidade"] || row["unid"] || row["und"] || row["emb"];
+    const rawUnidade = row["unidade"] || row["unid"] || row["und"] || "";
+    const rawEmbalagem = String(
+      row["embalagem"] || row["emb"] || row["tamanho"] || row["tipoembalagem"] || ""
+    ).trim();
     const rawPreco = row["precoreferencia"] || row["preco"] || row["valor"] || "";
     const categoria = String(row["categoria"] || row["grupo"] || row["tipo"] || "").trim();
 
@@ -356,7 +359,20 @@ async function importarProdutos(
     }
 
     // Validação 3: Unidade Comercial (kg, peça ou caixa)
-    const unidade = cleanSpreadsheetUnidade(rawUnidade);
+    let unidade = cleanSpreadsheetUnidade(rawUnidade);
+    if (!unidade && rawEmbalagem) {
+      const embLower = rawEmbalagem.toLowerCase();
+      if (embLower.includes("kg") || embLower.includes("gr")) {
+        unidade = "kg";
+      } else if (embLower.includes("caixa") || embLower.includes("cx") || embLower.includes("np")) {
+        unidade = "caixa";
+      } else if (embLower.includes("peça") || embLower.includes("pc")) {
+        unidade = "peça";
+      }
+    }
+    if (!unidade && !rawUnidade) {
+      unidade = "kg";
+    }
     if (!unidade) {
       stats.erros++;
       stats.detalhesErros.push({
@@ -405,6 +421,7 @@ async function importarProdutos(
           where: { id: prodExistente.id },
           data: {
             nome,
+            embalagem: rawEmbalagem || prodExistente.embalagem,
             unidade,
             precoReferencia: precoRef !== null ? precoRef : prodExistente.precoReferencia,
             categoria: categoria || prodExistente.categoria,
@@ -417,6 +434,7 @@ async function importarProdutos(
             frigorificoId,
             codigo,
             nome,
+            embalagem: rawEmbalagem || null,
             unidade,
             precoReferencia: precoRef,
             categoria: categoria || null,

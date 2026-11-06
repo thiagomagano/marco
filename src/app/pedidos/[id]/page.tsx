@@ -25,6 +25,7 @@ interface PedidoItem {
   produtoCodigoSnapshot: string;
   produtoNomeSnapshot: string;
   produtoUnidadeSnapshot: string;
+  produtoEmbalagemSnapshot?: string | null;
   quantidade: number;
   precoUnitario: number;
   subtotal: number;
@@ -393,7 +394,14 @@ export default function DetalhesPedidoPage({
                       {it.produtoCodigoSnapshot}
                     </td>
                     <td className="py-3 px-3 font-semibold text-slate-800">
-                      {it.produtoNomeSnapshot}
+                      <div className="flex items-center flex-wrap gap-1.5">
+                        <span>{it.produtoNomeSnapshot}</span>
+                        {it.produtoEmbalagemSnapshot && (
+                          <span className="bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded-sm text-[10px] font-medium border border-slate-200">
+                            Emb: {it.produtoEmbalagemSnapshot}
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="py-3 px-3">
                       <span className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded-md font-semibold text-[11px]">

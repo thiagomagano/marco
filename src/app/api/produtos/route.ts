@@ -42,7 +42,7 @@ export async function POST(request: Request) {
   try {
     await requireAuth();
     const body = await request.json();
-    const { frigorificoId, codigo, nome, categoria, unidade, precoReferencia } = body;
+    const { frigorificoId, codigo, nome, categoria, embalagem, unidade, precoReferencia } = body;
 
     if (!frigorificoId || !codigo || !nome || !unidade) {
       return NextResponse.json(
@@ -96,6 +96,7 @@ export async function POST(request: Request) {
         codigo: codigoLimpo,
         nome: nome.trim(),
         categoria: categoria?.trim() || null,
+        embalagem: embalagem?.trim() || null,
         unidade: u,
         precoReferencia: ref,
         ativo: true,

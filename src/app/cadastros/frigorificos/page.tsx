@@ -12,6 +12,7 @@ import {
   AlertCircle,
   RefreshCw,
   Search,
+  Trash2,
 } from "lucide-react";
 
 interface Frigorifico {
@@ -49,6 +50,11 @@ export default function FrigorificosPage() {
 
   const [salvando, setSalvando] = useState(false);
   const [formErro, setFormErro] = useState<string | null>(null);
+
+  // Modal de exclusão
+  const [frigorificoExcluir, setFrigorificoExcluir] = useState<Frigorifico | null>(null);
+  const [excluindo, setExcluindo] = useState(false);
+  const [erroExclusao, setErroExclusao] = useState<string | null>(null);
 
   const carregarFrigorificos = async () => {
     setLoading(true);
@@ -146,6 +152,27 @@ export default function FrigorificosPage() {
       }
     } catch (e) {
       console.error(e);
+    }
+  };
+
+  const confirmarExclusao = async () => {
+    if (!frigorificoExcluir) return;
+    setExcluindo(true);
+    setErroExclusao(null);
+    try {
+      const res = await fetch(`/api/frigorificos/${frigorificoExcluir.id}`, {
+        method: "DELETE",
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Erro ao excluir frigorífico.");
+      }
+      setFrigorificoExcluir(null);
+      carregarFrigorificos();
+    } catch (err) {
+      setErroExclusao((err as Error).message);
+    } finally {
+      setExcluindo(false);
     }
   };
 
@@ -248,6 +275,17 @@ export default function FrigorificosPage() {
                     title="Editar"
                   >
                     <Edit2 className="w-4 h-4" />
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setFrigorificoExcluir(f);
+                      setErroExclusao(null);
+                    }}
+                    className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition cursor-pointer"
+                    title="Excluir frigorífico"
+                  >
+                    <Trash2 className="w-4 h-4" />
                   </button>
 
                   <button
@@ -408,6 +446,59 @@ export default function FrigorificosPage() {
               </button>
             </div>
           </form>
+        </div>
+      )}
+
+      {/* Modal de Confirmação de Exclusão */}
+      {frigorificoExcluir && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="p-2.5 bg-red-100 text-red-600 rounded-xl shrink-0">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="text-base font-bold text-slate-900">
+                  Excluir Frigorífico
+                </h3>
+                <p className="text-xs text-slate-600">
+                  Tem certeza que deseja excluir o frigorífico <strong>{frigorificoExcluir.nomeFantasia}</strong>?
+                </p>
+              </div>
+            </div>
+
+            {erroExclusao && (
+              <div className="bg-red-50 border border-red-200 text-red-700 p-3 rounded-xl text-xs space-y-1">
+                <div className="font-bold flex items-center gap-1">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  <span>Não foi possível excluir</span>
+                </div>
+                <div>{erroExclusao}</div>
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => {
+                  setFrigorificoExcluir(null);
+                  setErroExclusao(null);
+                }}
+                disabled={excluindo}
+                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg transition cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={confirmarExclusao}
+                disabled={excluindo}
+                className="px-4 py-2 text-xs font-semibold bg-red-600 hover:bg-red-700 text-white rounded-lg transition disabled:opacity-50 cursor-pointer"
+              >
+                {excluindo ? "Excluindo..." : "Confirmar Exclusão"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

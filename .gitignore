@@ -40,5 +40,6 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-#arquivos de importação de dados
+# arquivos de importação de dados
 importacao/*
+*.db

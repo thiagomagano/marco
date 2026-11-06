@@ -68,6 +68,7 @@ export async function PATCH(
         codigo: codigoAtualizado,
         nome: body.nome?.trim() ?? produto.nome,
         categoria: body.categoria !== undefined ? body.categoria?.trim() || null : produto.categoria,
+        embalagem: body.embalagem !== undefined ? body.embalagem?.trim() || null : produto.embalagem,
         unidade: unidadeAtualizada,
         precoReferencia: precoRefAtualizado,
         ativo: body.ativo !== undefined ? Boolean(body.ativo) : produto.ativo,

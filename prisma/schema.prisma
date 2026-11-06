@@ -39,6 +39,7 @@ model Produto {
   codigo          String
   nome            String
   categoria       String?
+  embalagem       String?      // "saco 20kg", "caixa 20kg", "kg", "700gr", "caixa NP", etc.
   unidade         String       // "kg" | "peça" | "caixa"
   precoReferencia Float?
   ativo           Boolean      @default(true)
@@ -124,6 +125,7 @@ model PedidoItem {
   produtoCodigoSnapshot  String
   produtoNomeSnapshot    String
   produtoUnidadeSnapshot String
+  produtoEmbalagemSnapshot String?
   quantidade             Float
   precoUnitario          Float
   subtotal               Float

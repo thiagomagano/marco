@@ -11,6 +11,7 @@ import {
   AlertCircle,
   Building,
   UserCheck,
+  Trash2,
 } from "lucide-react";
 import { formatCnpj } from "@/lib/cnpj.ts";
 
@@ -69,6 +70,11 @@ export default function ClientesPage() {
   const [salvando, setSalvando] = useState(false);
   const [formErro, setFormErro] = useState<string | null>(null);
   const [formAviso, setFormAviso] = useState<string | null>(null);
+
+  // Modal de exclusão
+  const [clienteExcluir, setClienteExcluir] = useState<Cliente | null>(null);
+  const [excluindo, setExcluindo] = useState(false);
+  const [erroExclusao, setErroExclusao] = useState<string | null>(null);
 
   const carregarClientes = async () => {
     setLoading(true);
@@ -203,6 +209,27 @@ export default function ClientesPage() {
       }
     } catch (e) {
       console.error(e);
+    }
+  };
+
+  const confirmarExclusao = async () => {
+    if (!clienteExcluir) return;
+    setExcluindo(true);
+    setErroExclusao(null);
+    try {
+      const res = await fetch(`/api/clientes/${clienteExcluir.id}`, {
+        method: "DELETE",
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Erro ao excluir cliente.");
+      }
+      setClienteExcluir(null);
+      carregarClientes();
+    } catch (err) {
+      setErroExclusao((err as Error).message);
+    } finally {
+      setExcluindo(false);
     }
   };
 
@@ -365,13 +392,23 @@ export default function ClientesPage() {
                         {c.ativo ? "Ativo" : "Inativo"}
                       </span>
                     </td>
-                    <td className="py-3 px-4 text-right space-x-2">
+                    <td className="py-3 px-4 text-right space-x-1.5">
                       <button
                         onClick={() => abrirEdicao(c)}
                         className="p-1 text-slate-500 hover:text-slate-900 rounded-md transition cursor-pointer"
                         title="Editar cliente"
                       >
                         <Edit2 className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={() => {
+                          setClienteExcluir(c);
+                          setErroExclusao(null);
+                        }}
+                        className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md transition cursor-pointer"
+                        title="Excluir cliente"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
                       </button>
                       <button
                         onClick={() => toggleAtivo(c)}
@@ -609,6 +646,59 @@ export default function ClientesPage() {
               </button>
             </div>
           </form>
+        </div>
+      )}
+
+      {/* Modal de Confirmação de Exclusão */}
+      {clienteExcluir && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="p-2.5 bg-red-100 text-red-600 rounded-xl shrink-0">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="text-base font-bold text-slate-900">
+                  Excluir Cliente
+                </h3>
+                <p className="text-xs text-slate-600">
+                  Tem certeza que deseja excluir o cliente <strong>{clienteExcluir.nomeFantasia || clienteExcluir.razaoSocialOuNome}</strong>?
+                </p>
+              </div>
+            </div>
+
+            {erroExclusao && (
+              <div className="bg-red-50 border border-red-200 text-red-700 p-3 rounded-xl text-xs space-y-1">
+                <div className="font-bold flex items-center gap-1">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  <span>Não foi possível excluir</span>
+                </div>
+                <div>{erroExclusao}</div>
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => {
+                  setClienteExcluir(null);
+                  setErroExclusao(null);
+                }}
+                disabled={excluindo}
+                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg transition cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={confirmarExclusao}
+                disabled={excluindo}
+                className="px-4 py-2 text-xs font-semibold bg-red-600 hover:bg-red-700 text-white rounded-lg transition disabled:opacity-50 cursor-pointer"
+              >
+                {excluindo ? "Excluindo..." : "Confirmar Exclusão"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
