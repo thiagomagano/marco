@@ -5,7 +5,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
-  Calendar,
   Building2,
   Users,
   UserCheck,
@@ -13,7 +12,6 @@ import {
   CheckCircle2,
   AlertTriangle,
   FileText,
-  Clock,
   Printer,
   XCircle,
   Pencil,
@@ -28,7 +26,11 @@ import { formatCurrency, formatQuantity } from "@/lib/money.ts";
 import {
   gerarImagemPrintPedido,
   gerarNomeArquivoPrint,
+  gerarNomeArquivoPdf,
   gerarTextoResumoWhatsApp,
+  gerarArquivoPdfPedido,
+  renderizarPaginasA4Canvas,
+  imprimirPedidoEmPapel,
 } from "@/lib/pedido-share.ts";
 
 interface PedidoItem {
@@ -96,28 +98,49 @@ export default function DetalhesPedidoPage({
   // Ação de confirmar rascunho
   const [confirmando, setConfirmando] = useState(false);
 
-  // Modal de compartilhamento / print do pedido
+  // Modal de compartilhamento / print / PDF A4 do pedido
   const [modalShareAberto, setModalShareAberto] = useState(false);
+  const [modoVisualizacao, setModoVisualizacao] = useState<"PRINT" | "A4">(
+    "PRINT"
+  );
   const [gerandoPrint, setGerandoPrint] = useState(false);
   const [printBlob, setPrintBlob] = useState<Blob | null>(null);
   const [printPreviewUrl, setPrintPreviewUrl] = useState<string | null>(null);
+  const [pdfBlob, setPdfBlob] = useState<Blob | null>(null);
+  const [a4PreviewUrl, setA4PreviewUrl] = useState<string | null>(null);
   const [feedbackShare, setFeedbackShare] = useState<string | null>(null);
   const [erroShare, setErroShare] = useState<string | null>(null);
 
-  const abrirModalCompartilhamento = async (dadosPedido: PedidoDetalhes) => {
+  const abrirModalCompartilhamento = async (
+    dadosPedido: PedidoDetalhes,
+    modoInicial: "PRINT" | "A4" = "PRINT"
+  ) => {
     setModalShareAberto(true);
+    setModoVisualizacao(modoInicial);
     setFeedbackShare(null);
     setErroShare(null);
     setGerandoPrint(true);
     try {
-      const blob = await gerarImagemPrintPedido(dadosPedido);
-      setPrintBlob(blob);
+      const [blobPng, blobPdf, paginasA4] = await Promise.all([
+        gerarImagemPrintPedido(dadosPedido),
+        gerarArquivoPdfPedido(dadosPedido),
+        renderizarPaginasA4Canvas(dadosPedido),
+      ]);
+
+      setPrintBlob(blobPng);
       setPrintPreviewUrl((prev) => {
         if (prev) URL.revokeObjectURL(prev);
-        return URL.createObjectURL(blob);
+        return URL.createObjectURL(blobPng);
       });
+
+      setPdfBlob(blobPdf);
+      if (paginasA4.length > 0) {
+        setA4PreviewUrl(paginasA4[0].toDataURL("image/png"));
+      }
     } catch (err) {
-      setErroShare((err as Error).message || "Erro ao gerar imagem do pedido.");
+      setErroShare(
+        (err as Error).message || "Erro ao gerar arquivos de exportação."
+      );
     } finally {
       setGerandoPrint(false);
     }
@@ -162,22 +185,84 @@ export default function DetalhesPedidoPage({
     setFeedbackShare("Download do print PNG iniciado!");
   };
 
-  const handleCompartilharNativo = async () => {
-    if (!printBlob || !pedido) return;
+  const handleBaixarPdfA4 = async () => {
+    if (!pedido) return;
     setErroShare(null);
     try {
-      const nomeArquivo = gerarNomeArquivoPrint(pedido.numero);
-      const arquivo = new File([printBlob], nomeArquivo, { type: "image/png" });
-      if (navigator.canShare && navigator.canShare({ files: [arquivo] })) {
-        await navigator.share({
-          title: `Pedido ${pedido.numero}`,
-          text: `Resumo do Pedido ${pedido.numero} - ${
-            pedido.cliente.nomeFantasia || pedido.cliente.razaoSocialOuNome
-          }`,
-          files: [arquivo],
+      const blob = pdfBlob || (await gerarArquivoPdfPedido(pedido));
+      if (!pdfBlob) setPdfBlob(blob);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = gerarNomeArquivoPdf(pedido.numero);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      setTimeout(() => URL.revokeObjectURL(url), 3000);
+      setFeedbackShare(
+        "Download do PDF A4 (pronto para impressão em papel) iniciado!"
+      );
+    } catch (err) {
+      setErroShare(
+        (err as Error).message || "Não foi possível gerar o arquivo PDF."
+      );
+    }
+  };
+
+  const handleImprimirPapelA4 = () => {
+    if (!pedido) return;
+    setErroShare(null);
+    try {
+      imprimirPedidoEmPapel(pedido);
+      setFeedbackShare("Janela de impressão em folha A4 aberta!");
+    } catch (err) {
+      setErroShare(
+        (err as Error).message || "Erro ao abrir janela de impressão."
+      );
+    }
+  };
+
+  const handleCompartilharNativo = async () => {
+    if (!pedido) return;
+    setErroShare(null);
+    try {
+      if (modoVisualizacao === "A4" && pdfBlob) {
+        const nomePdf = gerarNomeArquivoPdf(pedido.numero);
+        const arqPdf = new File([pdfBlob], nomePdf, {
+          type: "application/pdf",
         });
-        setFeedbackShare("Compartilhamento enviado!");
-      } else if (navigator.share) {
+        if (navigator.canShare && navigator.canShare({ files: [arqPdf] })) {
+          await navigator.share({
+            title: `Pedido ${pedido.numero} (PDF)`,
+            text: `Pedido ${pedido.numero} em PDF para impressão - ${
+              pedido.cliente.nomeFantasia || pedido.cliente.razaoSocialOuNome
+            }`,
+            files: [arqPdf],
+          });
+          setFeedbackShare("PDF compartilhado com sucesso!");
+          return;
+        }
+      }
+
+      if (printBlob) {
+        const nomeArquivo = gerarNomeArquivoPrint(pedido.numero);
+        const arquivo = new File([printBlob], nomeArquivo, {
+          type: "image/png",
+        });
+        if (navigator.canShare && navigator.canShare({ files: [arquivo] })) {
+          await navigator.share({
+            title: `Pedido ${pedido.numero}`,
+            text: `Resumo do Pedido ${pedido.numero} - ${
+              pedido.cliente.nomeFantasia || pedido.cliente.razaoSocialOuNome
+            }`,
+            files: [arquivo],
+          });
+          setFeedbackShare("Compartilhamento enviado!");
+          return;
+        }
+      }
+
+      if (navigator.share) {
         await navigator.share({
           title: `Pedido ${pedido.numero}`,
           text: gerarTextoResumoWhatsApp(pedido),
@@ -213,11 +298,14 @@ export default function DetalhesPedidoPage({
         }
         const data = await res.json();
         setPedido(data);
-        if (
-          typeof window !== "undefined" &&
-          new URLSearchParams(window.location.search).get("share") === "1"
-        ) {
-          abrirModalCompartilhamento(data);
+        if (typeof window !== "undefined") {
+          const sp = new URLSearchParams(window.location.search);
+          if (sp.get("share") === "1") {
+            abrirModalCompartilhamento(
+              data,
+              sp.get("format") === "a4" ? "A4" : "PRINT"
+            );
+          }
         }
       } catch (err) {
         setError((err as Error).message);
@@ -231,7 +319,9 @@ export default function DetalhesPedidoPage({
   const handleCancelar = async () => {
     setCancelErro(null);
     if (!justificativa || justificativa.trim().length < 5) {
-      setCancelErro("A justificativa é obrigatória e deve ter pelo menos 5 caracteres.");
+      setCancelErro(
+        "A justificativa é obrigatória e deve ter pelo menos 5 caracteres."
+      );
       return;
     }
 
@@ -271,7 +361,8 @@ export default function DetalhesPedidoPage({
         body: JSON.stringify({
           status: "CONFIRMADO",
           itens: pedido.itens.map((it) => ({
-            produtoId: (it as unknown as { produtoId?: string }).produtoId || it.id,
+            produtoId:
+              (it as unknown as { produtoId?: string }).produtoId || it.id,
             quantidade: it.quantidade,
             precoUnitario: it.precoUnitario,
           })),
@@ -338,11 +429,20 @@ export default function DetalhesPedidoPage({
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
-            onClick={() => abrirModalCompartilhamento(pedido)}
+            onClick={() => abrirModalCompartilhamento(pedido, "PRINT")}
             className="inline-flex items-center gap-1.5 text-xs font-semibold bg-emerald-50 border border-emerald-200 hover:bg-emerald-100 text-emerald-800 px-4 py-2 rounded-xl transition shadow-xs cursor-pointer"
           >
             <Share2 className="w-3.5 h-3.5 text-emerald-600" />
             <span>Compartilhar / Print</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => abrirModalCompartilhamento(pedido, "A4")}
+            className="inline-flex items-center gap-1.5 text-xs font-semibold bg-white border border-slate-300 hover:bg-slate-50 text-slate-800 px-4 py-2 rounded-xl transition shadow-xs cursor-pointer"
+          >
+            <Printer className="w-3.5 h-3.5 text-slate-700" />
+            <span>PDF / Imprimir A4</span>
           </button>
 
           {pedido.status === "RASCUNHO" && (
@@ -392,11 +492,13 @@ export default function DetalhesPedidoPage({
                 Pedido Cancelado
               </div>
               <div className="text-xs text-red-700 mt-1">
-                <span className="font-semibold">Justificativa:</span> &ldquo;{pedido.justificativaCancelamento}&rdquo;
+                <span className="font-semibold">Justificativa:</span> &ldquo;
+                {pedido.justificativaCancelamento}&rdquo;
               </div>
               {pedido.dataCancelamento && (
                 <div className="text-[11px] text-red-600 mt-0.5">
-                  Cancelado em {new Date(pedido.dataCancelamento).toLocaleString("pt-BR")}
+                  Cancelado em{" "}
+                  {new Date(pedido.dataCancelamento).toLocaleString("pt-BR")}
                 </div>
               )}
             </div>
@@ -417,21 +519,32 @@ export default function DetalhesPedidoPage({
               </span>
             </div>
             <div className="text-xs text-slate-500 mt-1 flex flex-wrap items-center gap-x-4 gap-y-1">
-              <span>Criado em: {new Date(pedido.dataCriacao).toLocaleString("pt-BR")}</span>
+              <span>
+                Criado em:{" "}
+                {new Date(pedido.dataCriacao).toLocaleString("pt-BR")}
+              </span>
               {pedido.dataConfirmacao && (
-                <span>&bull; Confirmado em: {new Date(pedido.dataConfirmacao).toLocaleString("pt-BR")}</span>
+                <span>
+                  &bull; Confirmado em:{" "}
+                  {new Date(pedido.dataConfirmacao).toLocaleString("pt-BR")}
+                </span>
               )}
             </div>
           </div>
 
           <div className="text-left sm:text-right">
-            <div className="text-xs text-slate-500 font-medium">Total Estimado</div>
+            <div className="text-xs text-slate-500 font-medium">
+              Total Estimado
+            </div>
             <div className="text-2xl font-extrabold text-blue-700">
               {formatCurrency(pedido.totalEstimado)}
             </div>
             {pedido.pesoInformadoKg ? (
               <div className="text-xs text-slate-600 mt-0.5">
-                Peso Informado: <span className="font-bold">{formatQuantity(pedido.pesoInformadoKg, "kg")}</span>
+                Peso Informado:{" "}
+                <span className="font-bold">
+                  {formatQuantity(pedido.pesoInformadoKg, "kg")}
+                </span>
               </div>
             ) : null}
           </div>
@@ -445,12 +558,18 @@ export default function DetalhesPedidoPage({
               <Building2 className="w-3.5 h-3.5" />
               Frigorífico Representado
             </span>
-            <div className="font-bold text-sm text-slate-900">{pedido.frigorifico.nomeFantasia}</div>
+            <div className="font-bold text-sm text-slate-900">
+              {pedido.frigorifico.nomeFantasia}
+            </div>
             {pedido.frigorifico.cnpj && (
-              <div className="text-slate-500">CNPJ: {pedido.frigorifico.cnpj}</div>
+              <div className="text-slate-500">
+                CNPJ: {pedido.frigorifico.cnpj}
+              </div>
             )}
             {pedido.frigorifico.telefone && (
-              <div className="text-slate-500">Tel: {pedido.frigorifico.telefone}</div>
+              <div className="text-slate-500">
+                Tel: {pedido.frigorifico.telefone}
+              </div>
             )}
           </div>
 
@@ -464,7 +583,9 @@ export default function DetalhesPedidoPage({
               {pedido.cliente.nomeFantasia || pedido.cliente.razaoSocialOuNome}
             </div>
             {pedido.cliente.nomeFantasia && (
-              <div className="text-slate-600">{pedido.cliente.razaoSocialOuNome}</div>
+              <div className="text-slate-600">
+                {pedido.cliente.razaoSocialOuNome}
+              </div>
             )}
             {pedido.cliente.cnpj && (
               <div className="text-slate-500">CNPJ: {pedido.cliente.cnpj}</div>
@@ -472,7 +593,9 @@ export default function DetalhesPedidoPage({
             {(() => {
               const partesEndereco = [
                 pedido.cliente.endereco,
-                pedido.cliente.bairro ? `Bairro ${pedido.cliente.bairro}` : null,
+                pedido.cliente.bairro
+                  ? `Bairro ${pedido.cliente.bairro}`
+                  : null,
                 pedido.cliente.cidade,
                 pedido.cliente.cep ? `CEP ${pedido.cliente.cep}` : null,
               ].filter(Boolean);
@@ -480,7 +603,9 @@ export default function DetalhesPedidoPage({
               if (partesEndereco.length === 0) return null;
               return (
                 <div className="text-slate-500">
-                  <span className="font-semibold text-slate-700">Endereço: </span>
+                  <span className="font-semibold text-slate-700">
+                    Endereço:{" "}
+                  </span>
                   {partesEndereco.join(" • ")}
                 </div>
               );
@@ -493,9 +618,13 @@ export default function DetalhesPedidoPage({
               <UserCheck className="w-3.5 h-3.5" />
               Vendedor Responsável
             </span>
-            <div className="font-bold text-sm text-slate-900">{pedido.vendedor.nome}</div>
+            <div className="font-bold text-sm text-slate-900">
+              {pedido.vendedor.nome}
+            </div>
             {pedido.vendedor.telefone && (
-              <div className="text-slate-500">Tel: {pedido.vendedor.telefone}</div>
+              <div className="text-slate-500">
+                Tel: {pedido.vendedor.telefone}
+              </div>
             )}
           </div>
         </div>
@@ -503,9 +632,12 @@ export default function DetalhesPedidoPage({
         {/* Tabela de Itens (Fotografia Histórica) */}
         <div className="p-6 sm:p-8 space-y-4">
           <div className="flex items-center justify-between">
-            <h2 className="text-base font-bold text-slate-900">Itens do Pedido</h2>
+            <h2 className="text-base font-bold text-slate-900">
+              Itens do Pedido
+            </h2>
             <span className="text-xs text-slate-500">
-              {pedido.itens.length} {pedido.itens.length === 1 ? "produto" : "produtos"}
+              {pedido.itens.length}{" "}
+              {pedido.itens.length === 1 ? "produto" : "produtos"}
             </span>
           </div>
 
@@ -543,7 +675,10 @@ export default function DetalhesPedidoPage({
                       </span>
                     </td>
                     <td className="py-3 px-3 text-right font-semibold">
-                      {formatQuantity(it.quantidade, it.produtoUnidadeSnapshot)}
+                      {formatQuantity(
+                        it.quantidade,
+                        it.produtoUnidadeSnapshot
+                      )}
                     </td>
                     <td className="py-3 px-3 text-right">
                       {formatCurrency(it.precoUnitario)}
@@ -561,7 +696,9 @@ export default function DetalhesPedidoPage({
           {pedido.observacoes && (
             <div className="pt-4 border-t border-slate-100 text-xs">
               <span className="font-bold text-slate-700">Observações:</span>
-              <p className="text-slate-600 mt-0.5 whitespace-pre-wrap">{pedido.observacoes}</p>
+              <p className="text-slate-600 mt-0.5 whitespace-pre-wrap">
+                {pedido.observacoes}
+              </p>
             </div>
           )}
         </div>
@@ -577,7 +714,10 @@ export default function DetalhesPedidoPage({
             </div>
 
             <p className="text-xs text-slate-600 leading-relaxed">
-              Conforme a regra comercial (Seção 5.7 e 5.8), o cancelamento é definitivo, o pedido não integrará mais as vendas confirmadas e não alimentará o histórico de preços. Se houve erro na negociação, cancele e crie um novo pedido com os dados corretos.
+              Conforme a regra comercial (Seção 5.7 e 5.8), o cancelamento é
+              definitivo, o pedido não integrará mais as vendas confirmadas e
+              não alimentará o histórico de preços. Se houve erro na negociação,
+              cancele e crie um novo pedido com os dados corretos.
             </p>
 
             {cancelErro && (
@@ -598,7 +738,9 @@ export default function DetalhesPedidoPage({
                 placeholder="Ex: Erro no preço negociado pelo vendedor; cliente solicitou cancelamento; duplicidade de pedido..."
                 className="w-full p-3 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-red-500"
               />
-              <span className="text-[10px] text-slate-400">Mínimo de 5 caracteres.</span>
+              <span className="text-[10px] text-slate-400">
+                Mínimo de 5 caracteres.
+              </span>
             </div>
 
             <div className="flex items-center justify-end gap-2.5 pt-2">
@@ -622,37 +764,66 @@ export default function DetalhesPedidoPage({
         </div>
       )}
 
-      {/* Modal de Compartilhamento / Print para WhatsApp */}
+      {/* Modal de Compartilhamento: Print p/ WhatsApp & PDF A4 Imprimível */}
       {modalShareAberto && (
         <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4 overflow-y-auto">
           <div className="bg-white rounded-2xl max-w-4xl w-full p-5 sm:p-6 shadow-2xl space-y-4 my-8 max-h-[92vh] flex flex-col">
-            {/* Cabeçalho do Modal */}
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3 shrink-0">
+            {/* Cabeçalho do Modal + Seletor de Formato */}
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-slate-100 pb-3 shrink-0">
               <div className="flex items-center gap-2.5">
                 <div className="w-9 h-9 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-600">
                   <Share2 className="w-4 h-4" />
                 </div>
                 <div>
                   <h3 className="text-base font-bold text-slate-900">
-                    Compartilhar Print do Pedido {pedido.numero}
+                    Compartilhar / Imprimir Pedido {pedido.numero}
                   </h3>
                   <p className="text-xs text-slate-500">
-                    Copie a imagem pronta para colar direto no WhatsApp (Ctrl + V) ou baixe o arquivo PNG
+                    Escolha entre o Print para WhatsApp (PNG) ou o Documento PDF
+                    A4 pronto para impressão em papel
                   </p>
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={() => setModalShareAberto(false)}
-                className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition cursor-pointer"
-                title="Fechar"
-              >
-                <X className="w-5 h-5" />
-              </button>
+
+              <div className="flex items-center gap-2">
+                <div className="inline-flex rounded-xl bg-slate-100 p-1 text-xs font-semibold">
+                  <button
+                    type="button"
+                    onClick={() => setModoVisualizacao("PRINT")}
+                    className={`px-3 py-1.5 rounded-lg transition cursor-pointer ${
+                      modoVisualizacao === "PRINT"
+                        ? "bg-white text-emerald-700 shadow-xs font-bold"
+                        : "text-slate-600 hover:text-slate-900"
+                    }`}
+                  >
+                    Print WhatsApp
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setModoVisualizacao("A4")}
+                    className={`px-3 py-1.5 rounded-lg transition cursor-pointer ${
+                      modoVisualizacao === "A4"
+                        ? "bg-white text-slate-900 shadow-xs font-bold"
+                        : "text-slate-600 hover:text-slate-900"
+                    }`}
+                  >
+                    Folha A4 (PDF / Papel)
+                  </button>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setModalShareAberto(false)}
+                  className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition cursor-pointer"
+                  title="Fechar"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
             </div>
 
-            {/* Botões de Ação Rápida para WhatsApp */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 shrink-0">
+            {/* Botões de Ação */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 shrink-0">
               <button
                 type="button"
                 disabled={gerandoPrint || !printBlob}
@@ -660,33 +831,55 @@ export default function DetalhesPedidoPage({
                 className="flex items-center justify-center gap-2 py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-bold rounded-xl shadow-xs transition cursor-pointer"
               >
                 <Copy className="w-4 h-4 shrink-0" />
-                <span>Copiar Imagem (Ctrl+V)</span>
+                <span>Copiar Print (Ctrl+V no WhatsApp)</span>
+              </button>
+
+              <button
+                type="button"
+                disabled={gerandoPrint}
+                onClick={handleBaixarPdfA4}
+                className="flex items-center justify-center gap-2 py-2.5 px-4 bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white text-xs font-bold rounded-xl shadow-xs transition cursor-pointer"
+              >
+                <Download className="w-4 h-4 shrink-0" />
+                <span>Baixar PDF Imprimível (A4)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleImprimirPapelA4}
+                className="flex items-center justify-center gap-2 py-2.5 px-4 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-xs transition cursor-pointer"
+              >
+                <Printer className="w-4 h-4 shrink-0" />
+                <span>Imprimir em Papel (A4)</span>
               </button>
 
               <button
                 type="button"
                 disabled={gerandoPrint || !printPreviewUrl}
                 onClick={handleBaixarPrint}
-                className="flex items-center justify-center gap-2 py-2.5 px-4 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs font-bold rounded-xl shadow-xs transition cursor-pointer"
+                className="flex items-center justify-center gap-2 py-2 px-3 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 text-slate-700 text-xs font-semibold rounded-xl border border-slate-200 transition cursor-pointer"
               >
-                <Download className="w-4 h-4 shrink-0" />
-                <span>Baixar Print (PNG)</span>
+                <ImageIcon className="w-4 h-4 shrink-0" />
+                <span>Baixar Imagem PNG</span>
               </button>
 
               <button
                 type="button"
-                disabled={gerandoPrint || !printBlob}
+                disabled={gerandoPrint}
                 onClick={handleCompartilharNativo}
-                className="flex items-center justify-center gap-2 py-2.5 px-4 bg-slate-800 hover:bg-slate-900 disabled:opacity-50 text-white text-xs font-semibold rounded-xl shadow-xs transition cursor-pointer"
+                className="flex items-center justify-center gap-2 py-2 px-3 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 text-slate-700 text-xs font-semibold rounded-xl border border-slate-200 transition cursor-pointer"
               >
                 <Share2 className="w-4 h-4 shrink-0" />
-                <span>Enviar pelo Celular</span>
+                <span>
+                  Enviar pelo Celular (
+                  {modoVisualizacao === "A4" ? "PDF" : "PNG"})
+                </span>
               </button>
 
               <button
                 type="button"
                 onClick={handleCopiarTextoWhatsApp}
-                className="flex items-center justify-center gap-2 py-2.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl border border-slate-200 transition cursor-pointer"
+                className="flex items-center justify-center gap-2 py-2 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl border border-slate-200 transition cursor-pointer"
               >
                 <FileText className="w-4 h-4 shrink-0" />
                 <span>Copiar Resumo em Texto</span>
@@ -708,13 +901,22 @@ export default function DetalhesPedidoPage({
               </div>
             )}
 
-            {/* Pré-visualização do Print */}
+            {/* Pré-visualização */}
             <div className="flex-1 overflow-y-auto bg-slate-100 border border-slate-200 rounded-xl p-3 flex items-center justify-center min-h-[260px]">
               {gerandoPrint ? (
                 <div className="py-12 text-center text-slate-500 text-xs space-y-2">
                   <ImageIcon className="w-8 h-8 text-slate-400 mx-auto animate-pulse" />
-                  <p className="font-semibold">Gerando print do pedido em alta resolução...</p>
+                  <p className="font-semibold">
+                    Gerando print e documento PDF A4 em alta resolução...
+                  </p>
                 </div>
+              ) : modoVisualizacao === "A4" && a4PreviewUrl ? (
+                /* eslint-disable-next-line @next/next/no-img-element */
+                <img
+                  src={a4PreviewUrl}
+                  alt={`Folha A4 do Pedido ${pedido.numero}`}
+                  className="max-w-full h-auto rounded-sm shadow-md border border-slate-300 bg-white"
+                />
               ) : printPreviewUrl ? (
                 /* eslint-disable-next-line @next/next/no-img-element */
                 <img
@@ -732,7 +934,9 @@ export default function DetalhesPedidoPage({
             {/* Rodapé do Modal */}
             <div className="flex items-center justify-between pt-1 shrink-0 text-[11px] text-slate-400">
               <span>
-                Dica: No WhatsApp Web, clique em &ldquo;Copiar Imagem&rdquo; e pressione Ctrl+V direto na conversa.
+                {modoVisualizacao === "A4"
+                  ? "Modo Folha A4: diagramação P&B com bordas nítidas e espaço para assinatura de conferência no papel."
+                  : "Modo Print WhatsApp: clique em 'Copiar Print' e pressione Ctrl+V direto na conversa."}
               </span>
               <button
                 type="button"

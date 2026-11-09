@@ -2,12 +2,14 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
   gerarNomeArquivoPrint,
+  gerarNomeArquivoPdf,
   formatarEnderecoCliente,
   gerarTextoResumoWhatsApp,
+  gerarHtmlImpressaoA4,
   type PedidoShareData,
 } from "../src/lib/pedido-share.ts";
 
-describe("Compartilhamento e Exportação de Print de Pedido", () => {
+describe("Compartilhamento, Print e PDF A4 Imprimível de Pedido", () => {
   const pedidoExemplo: PedidoShareData = {
     id: "ped-123",
     numero: "PED-2026-00042",
@@ -60,7 +62,7 @@ describe("Compartilhamento e Exportação de Print de Pedido", () => {
     ],
   };
 
-  it("deve gerar o nome de arquivo padronizado para o print PNG", () => {
+  it("deve gerar o nome de arquivo padronizado para o print PNG e documento PDF", () => {
     assert.equal(
       gerarNomeArquivoPrint("PED-2026-00042"),
       "pedido-PED-2026-00042.png"
@@ -68,6 +70,14 @@ describe("Compartilhamento e Exportação de Print de Pedido", () => {
     assert.equal(
       gerarNomeArquivoPrint("PED 2026/01"),
       "pedido-PED-2026-01.png"
+    );
+    assert.equal(
+      gerarNomeArquivoPdf("PED-2026-00042"),
+      "pedido-PED-2026-00042.pdf"
+    );
+    assert.equal(
+      gerarNomeArquivoPdf("PED 2026/01"),
+      "pedido-PED-2026-01.pdf"
     );
   });
 
@@ -103,5 +113,23 @@ describe("Compartilhamento e Exportação de Print de Pedido", () => {
     );
     assert(texto.includes("*TOTAL ESTIMADO:"));
     assert(texto.includes("*Observações:* Entregar pela manhã no portão 2."));
+  });
+
+  it("deve gerar o documento HTML de impressão em papel A4 com estrutura completa e assinaturas", () => {
+    const html = gerarHtmlImpressaoA4(pedidoExemplo);
+
+    assert(html.includes("@page"));
+    assert(html.includes("size: A4 portrait"));
+    assert(html.includes("Pedido Comercial de Representação"));
+    assert(html.includes("PED-2026-00042"));
+    assert(html.includes("Frigorífico Valupi"));
+    assert(html.includes("Supermercado Silva"));
+    assert(html.includes("Av. Brasil, 500 • Bairro Centro • Campinas - SP • CEP 13010-000"));
+    assert(html.includes("Costela Suína Congelada"));
+    assert(html.includes("caixa 20kg"));
+    assert(html.includes("Lombo Suíno Temperado"));
+    assert(html.includes("saco 15kg"));
+    assert(html.includes("Entregar pela manhã no portão 2."));
+    assert(html.includes("Conferência / Cliente"));
   });
 });

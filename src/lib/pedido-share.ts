@@ -768,3 +768,1101 @@ export async function gerarImagemPrintPedido(
     }, "image/png");
   });
 }
+
+
+export function gerarNomeArquivoPdf(numeroPedido: string): string {
+  const limpo = (numeroPedido || "pedido")
+    .trim()
+    .replace(/[^a-zA-Z0-9_-]/g, "-");
+  return `pedido-${limpo}.pdf`;
+}
+
+function escapeHtml(str: string | null | undefined): string {
+  if (!str) return "";
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+/**
+ * Gera o documento HTML completo otimizado para impressão em papel A4 (retrato),
+ * com fundo 100% branco, bordas definidas de alto contraste e economia de tinta.
+ */
+export function gerarHtmlImpressaoA4(pedido: PedidoShareData): string {
+  const nomeCliente =
+    pedido.cliente.nomeFantasia || pedido.cliente.razaoSocialOuNome;
+  const mostrarRazaoCliente =
+    pedido.cliente.nomeFantasia &&
+    pedido.cliente.razaoSocialOuNome &&
+    pedido.cliente.nomeFantasia !== pedido.cliente.razaoSocialOuNome;
+  const enderecoCompleto = formatarEnderecoCliente(pedido.cliente);
+
+  const dataCriacaoStr = new Date(pedido.dataCriacao).toLocaleString("pt-BR");
+  const dataConfirmacaoStr = pedido.dataConfirmacao
+    ? new Date(pedido.dataConfirmacao).toLocaleString("pt-BR")
+    : null;
+  const dataEmissaoPdf = new Date().toLocaleString("pt-BR");
+
+  const linhasItensHtml = pedido.itens
+    .map(
+      (it, idx) => `
+      <tr>
+        <td class="center">${idx + 1}</td>
+        <td class="mono bold">${escapeHtml(it.produtoCodigoSnapshot || "-")}</td>
+        <td class="bold">${escapeHtml(it.produtoNomeSnapshot)}</td>
+        <td>${escapeHtml(it.produtoEmbalagemSnapshot || "-")}</td>
+        <td class="center">${escapeHtml(it.produtoUnidadeSnapshot)}</td>
+        <td class="right bold">${escapeHtml(
+          formatQuantity(it.quantidade, it.produtoUnidadeSnapshot)
+        )}</td>
+        <td class="right">${escapeHtml(formatCurrency(it.precoUnitario))}</td>
+        <td class="right bold">${escapeHtml(formatCurrency(it.subtotal))}</td>
+      </tr>`
+    )
+    .join("");
+
+  const bannerCanceladoHtml =
+    pedido.status === "CANCELADO"
+      ? `<div class="cancel-box">
+          <strong>PEDIDO CANCELADO</strong>
+          ${
+            pedido.justificativaCancelamento
+              ? `<div>Justificativa: "${escapeHtml(
+                  pedido.justificativaCancelamento
+                )}"</div>`
+              : ""
+          }
+        </div>`
+      : "";
+
+  const observacoesHtml =
+    pedido.observacoes && pedido.observacoes.trim()
+      ? `<div class="obs-box">
+          <div class="section-label">OBSERVAÇÕES DO PEDIDO</div>
+          <div class="obs-text">${escapeHtml(pedido.observacoes.trim())}</div>
+        </div>`
+      : "";
+
+  return `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <title>Pedido ${escapeHtml(pedido.numero)}</title>
+  <style>
+    @page {
+      size: A4 portrait;
+      margin: 12mm;
+    }
+    * {
+      box-sizing: border-box;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    body {
+      margin: 0;
+      padding: 0;
+      background: #ffffff;
+      color: #000000;
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 11px;
+      line-height: 1.4;
+    }
+    .page {
+      width: 100%;
+      max-width: 186mm;
+      margin: 0 auto;
+    }
+    .header-box {
+      border: 1.5px solid #000000;
+      padding: 10px 14px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+    .doc-title {
+      font-size: 10px;
+      font-weight: bold;
+      letter-spacing: 0.8px;
+      text-transform: uppercase;
+      color: #333333;
+    }
+    .order-number {
+      font-size: 20px;
+      font-weight: 800;
+      margin: 2px 0;
+    }
+    .status-badge {
+      display: inline-block;
+      border: 1px solid #000000;
+      padding: 2px 7px;
+      font-size: 10px;
+      font-weight: bold;
+      text-transform: uppercase;
+      margin-left: 8px;
+      vertical-align: middle;
+    }
+    .dates {
+      font-size: 10px;
+      color: #222222;
+    }
+    .header-totals {
+      text-align: right;
+    }
+    .total-label {
+      font-size: 10px;
+      font-weight: bold;
+      text-transform: uppercase;
+    }
+    .total-value {
+      font-size: 18px;
+      font-weight: 800;
+    }
+    .weight-value {
+      font-size: 10.5px;
+      font-weight: bold;
+      margin-top: 2px;
+    }
+    .cancel-box {
+      border: 1.5px solid #000000;
+      padding: 8px 12px;
+      margin-bottom: 10px;
+      font-size: 11px;
+    }
+    .parties-grid {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 12px;
+    }
+    .parties-grid td {
+      border: 1px solid #000000;
+      padding: 8px 10px;
+      vertical-align: top;
+      width: 33.33%;
+    }
+    .section-label {
+      font-size: 9px;
+      font-weight: bold;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #333333;
+      margin-bottom: 4px;
+      border-bottom: 1px solid #cccccc;
+      padding-bottom: 2px;
+    }
+    .party-name {
+      font-size: 12px;
+      font-weight: bold;
+      margin-bottom: 2px;
+    }
+    .party-detail {
+      font-size: 10.5px;
+      color: #111111;
+    }
+    .items-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 12px;
+    }
+    .items-table th,
+    .items-table td {
+      border: 1px solid #000000;
+      padding: 5px 7px;
+      font-size: 10.5px;
+    }
+    .items-table th {
+      background: #f0f0f0;
+      font-size: 9.5px;
+      font-weight: bold;
+      text-transform: uppercase;
+      text-align: left;
+    }
+    .items-table tfoot td {
+      background: #f5f5f5;
+      font-weight: bold;
+      font-size: 11.5px;
+      padding: 7px;
+    }
+    .center { text-align: center !important; }
+    .right { text-align: right !important; }
+    .bold { font-weight: bold; }
+    .mono { font-family: "Courier New", Courier, monospace; }
+    .obs-box {
+      border: 1px solid #000000;
+      padding: 8px 10px;
+      margin-bottom: 14px;
+    }
+    .obs-text {
+      white-space: pre-wrap;
+      font-size: 10.5px;
+    }
+    .signatures {
+      margin-top: 26px;
+      display: flex;
+      justify-content: space-between;
+      gap: 24px;
+      page-break-inside: avoid;
+    }
+    .sig-block {
+      flex: 1;
+      border-top: 1px solid #000000;
+      padding-top: 4px;
+      text-align: center;
+      font-size: 10px;
+    }
+    .footer-meta {
+      margin-top: 16px;
+      border-top: 1px dashed #666666;
+      padding-top: 6px;
+      display: flex;
+      justify-content: space-between;
+      font-size: 9.5px;
+      color: #333333;
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    ${bannerCanceladoHtml}
+
+    <div class="header-box">
+      <div>
+        <div class="doc-title">Pedido Comercial de Representação</div>
+        <div>
+          <span class="order-number">${escapeHtml(pedido.numero)}</span>
+          <span class="status-badge">${escapeHtml(pedido.status)}</span>
+        </div>
+        <div class="dates">
+          Criado em: ${escapeHtml(dataCriacaoStr)}
+          ${
+            dataConfirmacaoStr
+              ? ` &bull; Confirmado em: ${escapeHtml(dataConfirmacaoStr)}`
+              : ""
+          }
+        </div>
+      </div>
+
+      <div class="header-totals">
+        <div class="total-label">Total Estimado do Pedido</div>
+        <div class="total-value">${escapeHtml(
+          formatCurrency(pedido.totalEstimado)
+        )}</div>
+        ${
+          pedido.pesoInformadoKg
+            ? `<div class="weight-value">Peso Informado: ${escapeHtml(
+                formatQuantity(pedido.pesoInformadoKg, "kg")
+              )}</div>`
+            : ""
+        }
+      </div>
+    </div>
+
+    <table class="parties-grid">
+      <tr>
+        <td>
+          <div class="section-label">Frigorífico Representado</div>
+          <div class="party-name">${escapeHtml(
+            pedido.frigorifico.nomeFantasia
+          )}</div>
+          ${
+            pedido.frigorifico.cnpj
+              ? `<div class="party-detail">CNPJ: ${escapeHtml(
+                  pedido.frigorifico.cnpj
+                )}</div>`
+              : ""
+          }
+          ${
+            pedido.frigorifico.telefone
+              ? `<div class="party-detail">Tel: ${escapeHtml(
+                  pedido.frigorifico.telefone
+                )}</div>`
+              : ""
+          }
+        </td>
+        <td>
+          <div class="section-label">Cliente Comprador</div>
+          <div class="party-name">${escapeHtml(nomeCliente)}</div>
+          ${
+            mostrarRazaoCliente
+              ? `<div class="party-detail">${escapeHtml(
+                  pedido.cliente.razaoSocialOuNome
+                )}</div>`
+              : ""
+          }
+          ${
+            pedido.cliente.cnpj
+              ? `<div class="party-detail">CNPJ: ${escapeHtml(
+                  pedido.cliente.cnpj
+                )}</div>`
+              : ""
+          }
+          ${
+            pedido.cliente.telefone
+              ? `<div class="party-detail">Tel: ${escapeHtml(
+                  pedido.cliente.telefone
+                )}</div>`
+              : ""
+          }
+          ${
+            enderecoCompleto
+              ? `<div class="party-detail"><strong>End.:</strong> ${escapeHtml(
+                  enderecoCompleto
+                )}</div>`
+              : ""
+          }
+        </td>
+        <td>
+          <div class="section-label">Vendedor Responsável</div>
+          <div class="party-name">${escapeHtml(pedido.vendedor.nome)}</div>
+          ${
+            pedido.vendedor.telefone
+              ? `<div class="party-detail">Tel: ${escapeHtml(
+                  pedido.vendedor.telefone
+                )}</div>`
+              : ""
+          }
+        </td>
+      </tr>
+    </table>
+
+    <table class="items-table">
+      <thead>
+        <tr>
+          <th class="center" style="width: 34px;">#</th>
+          <th style="width: 72px;">Código</th>
+          <th>Descrição do Produto</th>
+          <th style="width: 105px;">Embalagem</th>
+          <th class="center" style="width: 48px;">Unid.</th>
+          <th class="right" style="width: 85px;">Quantidade</th>
+          <th class="right" style="width: 92px;">Preço Unit.</th>
+          <th class="right" style="width: 100px;">Subtotal</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${linhasItensHtml}
+      </tbody>
+      <tfoot>
+        <tr>
+          <td colspan="5">
+            Total de Itens: ${pedido.itens.length}
+            ${
+              pedido.pesoInformadoKg
+                ? ` &nbsp;|&nbsp; Peso Informado (kg): ${escapeHtml(
+                    formatQuantity(pedido.pesoInformadoKg, "kg")
+                  )}`
+                : ""
+            }
+          </td>
+          <td colspan="2" class="right">TOTAL ESTIMADO:</td>
+          <td class="right">${escapeHtml(
+            formatCurrency(pedido.totalEstimado)
+          )}</td>
+        </tr>
+      </tfoot>
+    </table>
+
+    ${observacoesHtml}
+
+    <div class="signatures">
+      <div class="sig-block">
+        Vendedor / Representação (${escapeHtml(pedido.vendedor.nome)})
+      </div>
+      <div class="sig-block">
+        Conferência / Cliente (${escapeHtml(nomeCliente)})
+      </div>
+    </div>
+
+    <div class="footer-meta">
+      <span>Pedido ${escapeHtml(pedido.numero)} &bull; ${escapeHtml(
+        pedido.frigorifico.nomeFantasia
+      )}</span>
+      <span>Impresso em ${escapeHtml(dataEmissaoPdf)}</span>
+    </div>
+  </div>
+</body>
+</html>`;
+}
+
+/**
+ * Abre a caixa de diálogo de impressão nativa do navegador com o layout A4 pronto para papel.
+ */
+export function imprimirPedidoEmPapel(pedido: PedidoShareData): void {
+  const html = gerarHtmlImpressaoA4(pedido);
+  const iframe = document.createElement("iframe");
+  iframe.style.position = "fixed";
+  iframe.style.right = "0";
+  iframe.style.bottom = "0";
+  iframe.style.width = "0";
+  iframe.style.height = "0";
+  iframe.style.border = "0";
+  document.body.appendChild(iframe);
+
+  const doc = iframe.contentWindow?.document;
+  if (!doc || !iframe.contentWindow) {
+    document.body.removeChild(iframe);
+    throw new Error("Não foi possível inicializar a janela de impressão.");
+  }
+
+  doc.open();
+  doc.write(html);
+  doc.close();
+
+  setTimeout(() => {
+    iframe.contentWindow?.focus();
+    iframe.contentWindow?.print();
+    setTimeout(() => {
+      if (document.body.contains(iframe)) {
+        document.body.removeChild(iframe);
+      }
+    }, 2000);
+  }, 250);
+}
+
+/**
+ * Desenha a folha A4 imprimível (fundo branco, bordas pretas, alto contraste)
+ * em um ou mais canvases de proporção A4 (794 x 1123 px lógicos em 2x DPI).
+ */
+export async function renderizarPaginasA4Canvas(
+  pedido: PedidoShareData
+): Promise<HTMLCanvasElement[]> {
+  const FONT_SANS = "Arial, Helvetica, sans-serif";
+  const FONT_MONO = "'Courier New', Courier, monospace";
+
+  const PAGE_W = 794; // Largura A4 em 96 DPI
+  const PAGE_H = 1123; // Altura A4 em 96 DPI
+  const MARGIN = 40;
+  const CONTENT_W = PAGE_W - MARGIN * 2; // 714px
+  const SCALE = 2; // 2x DPI para nitidez de impressão
+
+  const measureCanvas = document.createElement("canvas");
+  const mCtx = measureCanvas.getContext("2d");
+  if (!mCtx) {
+    throw new Error("Contexto Canvas 2D indisponível.");
+  }
+
+  // Desenha todo o conteúdo em um canvas mestre de largura A4 e altura dinâmica,
+  // e depois fatia em páginas A4 exatas caso ultrapasse 1 página.
+  const colW = CONTENT_W / 3;
+  mCtx.font = `700 12px ${FONT_SANS}`;
+  const frigLines = wrapTextLines(
+    mCtx,
+    pedido.frigorifico.nomeFantasia,
+    colW - 16
+  );
+  const nomeCliente =
+    pedido.cliente.nomeFantasia || pedido.cliente.razaoSocialOuNome;
+  const cliNomeLines = wrapTextLines(mCtx, nomeCliente, colW - 16);
+  const vendLines = wrapTextLines(mCtx, pedido.vendedor.nome, colW - 16);
+
+  mCtx.font = `400 10.5px ${FONT_SANS}`;
+  const cliRazaoLines =
+    pedido.cliente.nomeFantasia &&
+    pedido.cliente.razaoSocialOuNome &&
+    pedido.cliente.nomeFantasia !== pedido.cliente.razaoSocialOuNome
+      ? wrapTextLines(mCtx, pedido.cliente.razaoSocialOuNome, colW - 16)
+      : [];
+  const endStr = formatarEnderecoCliente(pedido.cliente);
+  const cliEndLines = endStr
+    ? wrapTextLines(mCtx, `End.: ${endStr}`, colW - 16)
+    : [];
+
+  const p1H =
+    26 +
+    frigLines.length * 15 +
+    (pedido.frigorifico.cnpj ? 15 : 0) +
+    (pedido.frigorifico.telefone ? 15 : 0);
+  const p2H =
+    26 +
+    cliNomeLines.length * 15 +
+    cliRazaoLines.length * 14 +
+    (pedido.cliente.cnpj ? 15 : 0) +
+    (pedido.cliente.telefone ? 15 : 0) +
+    cliEndLines.length * 14;
+  const p3H =
+    26 +
+    vendLines.length * 15 +
+    (pedido.vendedor.telefone ? 15 : 0);
+
+  const partiesBoxH = Math.max(p1H, p2H, p3H) + 14;
+
+  // Medição das linhas da tabela de itens
+  // Colunas: # (30) | Código (68) | Produto (236) | Embalagem (98) | Unid (44) | Qtd (76) | Preço (80) | Subtotal (82) = 714
+  const PROD_COL_W = 224;
+  mCtx.font = `700 10.5px ${FONT_SANS}`;
+  const itemRows = pedido.itens.map((it) => {
+    const lines = wrapTextLines(
+      mCtx,
+      it.produtoNomeSnapshot || "-",
+      PROD_COL_W
+    );
+    const h = Math.max(26, lines.length * 14 + 10);
+    return { lines, h };
+  });
+  const totalItemsH = itemRows.reduce((a, b) => a + b.h, 0);
+
+  mCtx.font = `400 10.5px ${FONT_SANS}`;
+  const obsLines =
+    pedido.observacoes && pedido.observacoes.trim()
+      ? wrapTextLines(mCtx, pedido.observacoes.trim(), CONTENT_W - 20)
+      : [];
+  const obsBoxH = obsLines.length > 0 ? 30 + obsLines.length * 15 + 10 : 0;
+
+  const totalLogicalH =
+    MARGIN * 2 +
+    86 + // Header
+    12 +
+    partiesBoxH +
+    14 +
+    28 + // Table header
+    totalItemsH +
+    32 + // Table footer
+    (obsBoxH > 0 ? 14 + obsBoxH : 0) +
+    90; // Assinaturas e rodapé
+
+  const usablePageH = PAGE_H - MARGIN * 2;
+  const numPages = Math.max(
+    1,
+    Math.ceil((totalLogicalH - MARGIN * 2) / usablePageH)
+  );
+  const masterH = Math.max(PAGE_H, MARGIN * 2 + numPages * usablePageH);
+
+  const masterCanvas = document.createElement("canvas");
+  masterCanvas.width = PAGE_W * SCALE;
+  masterCanvas.height = masterH * SCALE;
+  const ctx = masterCanvas.getContext("2d");
+  if (!ctx) {
+    throw new Error("Falha ao criar contexto 2D para PDF.");
+  }
+
+  ctx.scale(SCALE, SCALE);
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, PAGE_W, masterH);
+
+  let y = MARGIN;
+  const x0 = MARGIN;
+  const xRight = MARGIN + CONTENT_W;
+
+  // 1. Cabeçalho Formal com Borda Preta
+  const headerH = 82;
+  ctx.strokeStyle = "#000000";
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(x0, y, CONTENT_W, headerH);
+
+  ctx.fillStyle = "#333333";
+  ctx.font = `700 10px ${FONT_SANS}`;
+  ctx.textAlign = "left";
+  ctx.fillText("PEDIDO COMERCIAL DE REPRESENTAÇÃO", x0 + 12, y + 20);
+
+  ctx.fillStyle = "#000000";
+  ctx.font = `800 20px ${FONT_SANS}`;
+  ctx.fillText(pedido.numero, x0 + 12, y + 46);
+  const numW = ctx.measureText(pedido.numero).width;
+
+  // Badge Status P&B Imprimível
+  ctx.font = `700 10px ${FONT_SANS}`;
+  const stText = pedido.status.toUpperCase();
+  const stW = ctx.measureText(stText).width + 14;
+  ctx.lineWidth = 1;
+  ctx.strokeRect(x0 + 12 + numW + 10, y + 31, stW, 19);
+  ctx.fillText(stText, x0 + 12 + numW + 17, y + 44);
+
+  ctx.fillStyle = "#222222";
+  ctx.font = `400 10px ${FONT_SANS}`;
+  const dtCriacao = `Criado em: ${new Date(pedido.dataCriacao).toLocaleString(
+    "pt-BR"
+  )}`;
+  const dtConf = pedido.dataConfirmacao
+    ? `  •  Confirmado em: ${new Date(pedido.dataConfirmacao).toLocaleString(
+        "pt-BR"
+      )}`
+    : "";
+  ctx.fillText(`${dtCriacao}${dtConf}`, x0 + 12, y + 68);
+
+  // Total no Cabeçalho Direito
+  ctx.textAlign = "right";
+  ctx.fillStyle = "#222222";
+  ctx.font = `700 10px ${FONT_SANS}`;
+  ctx.fillText("TOTAL ESTIMADO DO PEDIDO", xRight - 12, y + 22);
+
+  ctx.fillStyle = "#000000";
+  ctx.font = `800 19px ${FONT_SANS}`;
+  ctx.fillText(formatCurrency(pedido.totalEstimado), xRight - 12, y + 46);
+
+  if (pedido.pesoInformadoKg) {
+    ctx.font = `700 10.5px ${FONT_SANS}`;
+    ctx.fillText(
+      `Peso Informado: ${formatQuantity(pedido.pesoInformadoKg, "kg")}`,
+      xRight - 12,
+      y + 66
+    );
+  }
+
+  y += headerH + 12;
+
+  // 2. Quadro de Partes Envolvidas (3 Colunas Gradeadas)
+  ctx.strokeStyle = "#000000";
+  ctx.lineWidth = 1;
+  ctx.strokeRect(x0, y, CONTENT_W, partiesBoxH);
+  ctx.beginPath();
+  ctx.moveTo(x0 + colW, y);
+  ctx.lineTo(x0 + colW, y + partiesBoxH);
+  ctx.moveTo(x0 + colW * 2, y);
+  ctx.lineTo(x0 + colW * 2, y + partiesBoxH);
+  ctx.stroke();
+
+  const drawPartyHeader = (label: string, colX: number) => {
+    ctx.textAlign = "left";
+    ctx.fillStyle = "#333333";
+    ctx.font = `700 9px ${FONT_SANS}`;
+    ctx.fillText(label, colX + 8, y + 15);
+    ctx.strokeStyle = "#cccccc";
+    ctx.beginPath();
+    ctx.moveTo(colX + 8, y + 19);
+    ctx.lineTo(colX + colW - 8, y + 19);
+    ctx.stroke();
+  };
+
+  // Coluna 1: Frigorífico
+  drawPartyHeader("FRIGORÍFICO REPRESENTADO", x0);
+  let py1 = y + 34;
+  ctx.fillStyle = "#000000";
+  ctx.font = `700 12px ${FONT_SANS}`;
+  for (const l of frigLines) {
+    ctx.fillText(l, x0 + 8, py1);
+    py1 += 15;
+  }
+  ctx.font = `400 10.5px ${FONT_SANS}`;
+  if (pedido.frigorifico.cnpj) {
+    ctx.fillText(`CNPJ: ${pedido.frigorifico.cnpj}`, x0 + 8, py1);
+    py1 += 15;
+  }
+  if (pedido.frigorifico.telefone) {
+    ctx.fillText(`Tel: ${pedido.frigorifico.telefone}`, x0 + 8, py1);
+    py1 += 15;
+  }
+
+  // Coluna 2: Cliente
+  const col2X = x0 + colW;
+  drawPartyHeader("CLIENTE COMPRADOR", col2X);
+  let py2 = y + 34;
+  ctx.fillStyle = "#000000";
+  ctx.font = `700 12px ${FONT_SANS}`;
+  for (const l of cliNomeLines) {
+    ctx.fillText(l, col2X + 8, py2);
+    py2 += 15;
+  }
+  ctx.font = `400 10.5px ${FONT_SANS}`;
+  for (const l of cliRazaoLines) {
+    ctx.fillText(l, col2X + 8, py2);
+    py2 += 14;
+  }
+  if (pedido.cliente.cnpj) {
+    ctx.fillText(`CNPJ: ${pedido.cliente.cnpj}`, col2X + 8, py2);
+    py2 += 15;
+  }
+  if (pedido.cliente.telefone) {
+    ctx.fillText(`Tel: ${pedido.cliente.telefone}`, col2X + 8, py2);
+    py2 += 15;
+  }
+  for (const l of cliEndLines) {
+    ctx.fillText(l, col2X + 8, py2);
+    py2 += 14;
+  }
+
+  // Coluna 3: Vendedor
+  const col3X = x0 + colW * 2;
+  drawPartyHeader("VENDEDOR RESPONSÁVEL", col3X);
+  let py3 = y + 34;
+  ctx.fillStyle = "#000000";
+  ctx.font = `700 12px ${FONT_SANS}`;
+  for (const l of vendLines) {
+    ctx.fillText(l, col3X + 8, py3);
+    py3 += 15;
+  }
+  ctx.font = `400 10.5px ${FONT_SANS}`;
+  if (pedido.vendedor.telefone) {
+    ctx.fillText(`Tel: ${pedido.vendedor.telefone}`, col3X + 8, py3);
+    py3 += 15;
+  }
+
+  y += partiesBoxH + 14;
+
+  // 3. Tabela Gradeada de Itens
+  const colWidths = [30, 68, 236, 98, 44, 76, 80, 82]; // Soma = 714 (CONTENT_W)
+  const colStarts: number[] = [];
+  let accX = x0;
+  for (const w of colWidths) {
+    colStarts.push(accX);
+    accX += w;
+  }
+
+  const thH = 26;
+  ctx.fillStyle = "#efefef";
+  ctx.fillRect(x0, y, CONTENT_W, thH);
+  ctx.strokeStyle = "#000000";
+  ctx.lineWidth = 1;
+  ctx.strokeRect(x0, y, CONTENT_W, thH);
+
+  const headers = [
+    { text: "#", align: "center" as const },
+    { text: "CÓDIGO", align: "left" as const },
+    { text: "DESCRIÇÃO DO PRODUTO", align: "left" as const },
+    { text: "EMBALAGEM", align: "left" as const },
+    { text: "UNID.", align: "center" as const },
+    { text: "QUANTIDADE", align: "right" as const },
+    { text: "PREÇO UNIT.", align: "right" as const },
+    { text: "SUBTOTAL", align: "right" as const },
+  ];
+
+  ctx.fillStyle = "#000000";
+  ctx.font = `700 9.5px ${FONT_SANS}`;
+  headers.forEach((h, i) => {
+    const cx = colStarts[i];
+    const cw = colWidths[i];
+    if (i > 0) {
+      ctx.beginPath();
+      ctx.moveTo(cx, y);
+      ctx.lineTo(cx, y + thH);
+      ctx.stroke();
+    }
+    if (h.align === "center") {
+      ctx.textAlign = "center";
+      ctx.fillText(h.text, cx + cw / 2, y + 17);
+    } else if (h.align === "right") {
+      ctx.textAlign = "right";
+      ctx.fillText(h.text, cx + cw - 6, y + 17);
+    } else {
+      ctx.textAlign = "left";
+      ctx.fillText(h.text, cx + 6, y + 17);
+    }
+  });
+
+  y += thH;
+
+  // Linhas de Itens
+  pedido.itens.forEach((it, idx) => {
+    const { lines, h } = itemRows[idx];
+    ctx.strokeStyle = "#000000";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x0, y, CONTENT_W, h);
+
+    for (let c = 1; c < colStarts.length; c++) {
+      ctx.beginPath();
+      ctx.moveTo(colStarts[c], y);
+      ctx.lineTo(colStarts[c], y + h);
+      ctx.stroke();
+    }
+
+    const ty = y + 17;
+    ctx.fillStyle = "#000000";
+
+    // #
+    ctx.font = `400 10px ${FONT_SANS}`;
+    ctx.textAlign = "center";
+    ctx.fillText(String(idx + 1), colStarts[0] + colWidths[0] / 2, ty);
+
+    // Código
+    ctx.font = `700 10.5px ${FONT_MONO}`;
+    ctx.textAlign = "left";
+    ctx.fillText(it.produtoCodigoSnapshot || "-", colStarts[1] + 6, ty);
+
+    // Produto
+    ctx.font = `700 10.5px ${FONT_SANS}`;
+    lines.forEach((line, lIdx) => {
+      ctx.fillText(line, colStarts[2] + 6, ty + lIdx * 14);
+    });
+
+    // Embalagem
+    ctx.font = `400 10px ${FONT_SANS}`;
+    ctx.fillText(it.produtoEmbalagemSnapshot || "-", colStarts[3] + 6, ty);
+
+    // Unidade
+    ctx.textAlign = "center";
+    ctx.fillText(
+      it.produtoUnidadeSnapshot,
+      colStarts[4] + colWidths[4] / 2,
+      ty
+    );
+
+    // Quantidade
+    ctx.textAlign = "right";
+    ctx.font = `700 10.5px ${FONT_SANS}`;
+    ctx.fillText(
+      formatQuantity(it.quantidade, it.produtoUnidadeSnapshot),
+      colStarts[5] + colWidths[5] - 6,
+      ty
+    );
+
+    // Preço Unit.
+    ctx.font = `400 10.5px ${FONT_SANS}`;
+    ctx.fillText(
+      formatCurrency(it.precoUnitario),
+      colStarts[6] + colWidths[6] - 6,
+      ty
+    );
+
+    // Subtotal
+    ctx.font = `700 10.5px ${FONT_SANS}`;
+    ctx.fillText(
+      formatCurrency(it.subtotal),
+      colStarts[7] + colWidths[7] - 6,
+      ty
+    );
+
+    y += h;
+  });
+
+  // Rodapé da Tabela
+  const tfH = 30;
+  ctx.fillStyle = "#f5f5f5";
+  ctx.fillRect(x0, y, CONTENT_W, tfH);
+  ctx.strokeStyle = "#000000";
+  ctx.strokeRect(x0, y, CONTENT_W, tfH);
+
+  ctx.fillStyle = "#000000";
+  ctx.font = `700 10.5px ${FONT_SANS}`;
+  ctx.textAlign = "left";
+  const pesoResumo = pedido.pesoInformadoKg
+    ? `   |   Peso Informado: ${formatQuantity(pedido.pesoInformadoKg, "kg")}`
+    : "";
+  ctx.fillText(
+    `Total de Itens: ${pedido.itens.length}${pesoResumo}`,
+    x0 + 8,
+    y + 19
+  );
+
+  ctx.textAlign = "right";
+  ctx.font = `800 12px ${FONT_SANS}`;
+  ctx.fillText(
+    `TOTAL ESTIMADO: ${formatCurrency(pedido.totalEstimado)}`,
+    xRight - 8,
+    y + 19
+  );
+
+  y += tfH;
+
+  // 4. Observações (se houver)
+  if (obsLines.length > 0) {
+    y += 14;
+    ctx.strokeStyle = "#000000";
+    ctx.strokeRect(x0, y, CONTENT_W, obsBoxH);
+    ctx.textAlign = "left";
+    ctx.fillStyle = "#333333";
+    ctx.font = `700 9.5px ${FONT_SANS}`;
+    ctx.fillText("OBSERVAÇÕES DO PEDIDO:", x0 + 8, y + 16);
+
+    ctx.fillStyle = "#000000";
+    ctx.font = `400 10.5px ${FONT_SANS}`;
+    let oy = y + 32;
+    for (const l of obsLines) {
+      ctx.fillText(l, x0 + 8, oy);
+      oy += 15;
+    }
+    y += obsBoxH;
+  }
+
+  // 5. Linhas de Assinatura / Conferência no Papel
+  y += 42;
+  const sigW = (CONTENT_W - 48) / 2;
+  ctx.strokeStyle = "#000000";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(x0, y);
+  ctx.lineTo(x0 + sigW, y);
+  ctx.moveTo(x0 + sigW + 48, y);
+  ctx.lineTo(xRight, y);
+  ctx.stroke();
+
+  ctx.fillStyle = "#000000";
+  ctx.font = `400 10px ${FONT_SANS}`;
+  ctx.textAlign = "center";
+  ctx.fillText(
+    `Vendedor / Representação (${pedido.vendedor.nome})`,
+    x0 + sigW / 2,
+    y + 15
+  );
+  ctx.fillText(
+    `Conferência / Cliente (${nomeCliente})`,
+    x0 + sigW + 48 + sigW / 2,
+    y + 15
+  );
+
+  // Rodapé de Data/Hora
+  y += 32;
+  ctx.fillStyle = "#444444";
+  ctx.font = `400 9.5px ${FONT_SANS}`;
+  ctx.textAlign = "left";
+  ctx.fillText(
+    `Documento Imprimível A4 • Pedido ${pedido.numero} • ${pedido.frigorifico.nomeFantasia}`,
+    x0,
+    y
+  );
+  ctx.textAlign = "right";
+  ctx.fillText(`Gerado em ${new Date().toLocaleString("pt-BR")}`, xRight, y);
+
+  // Fatia em páginas A4 individuais
+  const pages: HTMLCanvasElement[] = [];
+  for (let p = 0; p < numPages; p++) {
+    const pageCanvas = document.createElement("canvas");
+    pageCanvas.width = PAGE_W * SCALE;
+    pageCanvas.height = PAGE_H * SCALE;
+    const pCtx = pageCanvas.getContext("2d");
+    if (!pCtx) continue;
+
+    pCtx.fillStyle = "#ffffff";
+    pCtx.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
+
+    const srcY = p * usablePageH * SCALE;
+    const sliceH = Math.min(
+      (usablePageH + MARGIN * 2) * SCALE,
+      masterCanvas.height - srcY
+    );
+
+    pCtx.drawImage(
+      masterCanvas,
+      0,
+      srcY,
+      PAGE_W * SCALE,
+      sliceH,
+      0,
+      0,
+      PAGE_W * SCALE,
+      sliceH
+    );
+
+    pages.push(pageCanvas);
+  }
+
+  return pages;
+}
+
+function dataUrlToUint8Array(dataUrl: string): Uint8Array {
+  const base64 = dataUrl.split(",")[1] || "";
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
+}
+
+/**
+ * Empacota uma ou mais páginas A4 em um arquivo binário PDF 1.4 válido (application/pdf)
+ * pronto para download ou envio direto como documento.
+ */
+export async function gerarArquivoPdfPedido(
+  pedido: PedidoShareData
+): Promise<Blob> {
+  const pageCanvases = await renderizarPaginasA4Canvas(pedido);
+  const A4_PT_W = 595.28;
+  const A4_PT_H = 841.89;
+
+  const encoder = new TextEncoder();
+  const chunks: BlobPart[] = [];
+  const offsets: number[] = [0]; // Índice 0 reservado para o objeto livre 0
+  let byteLength = 0;
+
+  const pushStr = (s: string) => {
+    const arr = encoder.encode(s);
+    chunks.push(arr as unknown as BlobPart);
+    byteLength += arr.byteLength;
+  };
+
+  const pushBytes = (arr: Uint8Array) => {
+    chunks.push(arr as unknown as BlobPart);
+    byteLength += arr.byteLength;
+  };
+
+  const startObj = (id: number) => {
+    offsets[id] = byteLength;
+    pushStr(`${id} 0 obj\n`);
+  };
+
+  const endObj = () => {
+    pushStr(`\nendobj\n`);
+  };
+
+  pushStr("%PDF-1.4\n%\xFF\xFF\xFF\xFF\n");
+
+  // Objetos:
+  // 1: Catalog
+  // 2: Pages
+  // Para cada página i (0..N-1):
+  //   pageObjId = 3 + i * 3
+  //   contentObjId = 4 + i * 3
+  //   imageObjId = 5 + i * 3
+  const numPages = pageCanvases.length;
+  const pageObjIds: number[] = [];
+
+  for (let i = 0; i < numPages; i++) {
+    pageObjIds.push(3 + i * 3);
+  }
+
+  startObj(1);
+  pushStr(`<< /Type /Catalog /Pages 2 0 R >>`);
+  endObj();
+
+  startObj(2);
+  pushStr(
+    `<< /Type /Pages /Kids [${pageObjIds
+      .map((id) => `${id} 0 R`)
+      .join(" ")}] /Count ${numPages} >>`
+  );
+  endObj();
+
+  for (let i = 0; i < numPages; i++) {
+    const canvas = pageCanvases[i];
+    const jpegBytes = dataUrlToUint8Array(
+      canvas.toDataURL("image/jpeg", 0.95)
+    );
+
+    const pageObjId = 3 + i * 3;
+    const contentObjId = 4 + i * 3;
+    const imageObjId = 5 + i * 3;
+    const imgName = `/Im${i + 1}`;
+
+    // Page object
+    startObj(pageObjId);
+    pushStr(
+      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${A4_PT_W} ${A4_PT_H}] /Resources << /XObject << ${imgName} ${imageObjId} 0 R >> >> /Contents ${contentObjId} 0 R >>`
+    );
+    endObj();
+
+    // Content stream que posiciona a imagem cobrindo a folha A4
+    const streamCmd = `q\n${A4_PT_W} 0 0 ${A4_PT_H} 0 0 cm\n${imgName} Do\nQ`;
+    const streamBytes = encoder.encode(streamCmd);
+    startObj(contentObjId);
+    pushStr(`<< /Length ${streamBytes.byteLength} >>\nstream\n`);
+    pushBytes(streamBytes);
+    pushStr(`\nendstream`);
+    endObj();
+
+    // Image XObject (DCTDecode / JPEG)
+    startObj(imageObjId);
+    pushStr(
+      `<< /Type /XObject /Subtype /Image /Width ${canvas.width} /Height ${canvas.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${jpegBytes.byteLength} >>\nstream\n`
+    );
+    pushBytes(jpegBytes);
+    pushStr(`\nendstream`);
+    endObj();
+  }
+
+  const totalObjs = 2 + numPages * 3;
+  const xrefOffset = byteLength;
+
+  pushStr(`xref\n0 ${totalObjs + 1}\n`);
+  pushStr(`0000000000 65535 f \n`);
+  for (let id = 1; id <= totalObjs; id++) {
+    const offStr = String(offsets[id] || 0).padStart(10, "0");
+    pushStr(`${offStr} 00000 n \n`);
+  }
+
+  pushStr(
+    `trailer\n<< /Size ${totalObjs + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`
+  );
+
+  return new Blob(chunks, { type: "application/pdf" });
+}
