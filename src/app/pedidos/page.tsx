@@ -16,6 +16,7 @@ import {
   FileEdit,
   XCircle,
   RefreshCw,
+  Share2,
 } from "lucide-react";
 import { formatCurrency, formatQuantity } from "@/lib/money.ts";
 
@@ -414,6 +415,14 @@ export default function PedidosPage() {
                         </td>
                         <td className="py-3.5 px-4 text-center">
                           <div className="flex items-center justify-center gap-2">
+                            <Link
+                              href={`/pedidos/${p.id}?share=1`}
+                              className="inline-flex items-center gap-1 text-emerald-700 hover:text-emerald-900 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-2 py-0.5 rounded-md text-[11px] font-semibold transition"
+                              title="Gerar print para compartilhar no WhatsApp"
+                            >
+                              <Share2 className="w-3 h-3" />
+                              <span>Print</span>
+                            </Link>
                             {p.status === "RASCUNHO" && (
                               <Link
                                 href={`/pedidos/${p.id}/editar`}

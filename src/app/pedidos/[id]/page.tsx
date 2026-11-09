@@ -17,8 +17,19 @@ import {
   Printer,
   XCircle,
   Pencil,
+  Share2,
+  Copy,
+  Download,
+  Check,
+  Image as ImageIcon,
+  X,
 } from "lucide-react";
 import { formatCurrency, formatQuantity } from "@/lib/money.ts";
+import {
+  gerarImagemPrintPedido,
+  gerarNomeArquivoPrint,
+  gerarTextoResumoWhatsApp,
+} from "@/lib/pedido-share.ts";
 
 interface PedidoItem {
   id: string;
@@ -85,6 +96,114 @@ export default function DetalhesPedidoPage({
   // Ação de confirmar rascunho
   const [confirmando, setConfirmando] = useState(false);
 
+  // Modal de compartilhamento / print do pedido
+  const [modalShareAberto, setModalShareAberto] = useState(false);
+  const [gerandoPrint, setGerandoPrint] = useState(false);
+  const [printBlob, setPrintBlob] = useState<Blob | null>(null);
+  const [printPreviewUrl, setPrintPreviewUrl] = useState<string | null>(null);
+  const [feedbackShare, setFeedbackShare] = useState<string | null>(null);
+  const [erroShare, setErroShare] = useState<string | null>(null);
+
+  const abrirModalCompartilhamento = async (dadosPedido: PedidoDetalhes) => {
+    setModalShareAberto(true);
+    setFeedbackShare(null);
+    setErroShare(null);
+    setGerandoPrint(true);
+    try {
+      const blob = await gerarImagemPrintPedido(dadosPedido);
+      setPrintBlob(blob);
+      setPrintPreviewUrl((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return URL.createObjectURL(blob);
+      });
+    } catch (err) {
+      setErroShare((err as Error).message || "Erro ao gerar imagem do pedido.");
+    } finally {
+      setGerandoPrint(false);
+    }
+  };
+
+  const handleCopiarImagemPrint = async () => {
+    if (!printBlob) return;
+    setErroShare(null);
+    try {
+      if (
+        typeof navigator !== "undefined" &&
+        navigator.clipboard &&
+        typeof ClipboardItem !== "undefined"
+      ) {
+        await navigator.clipboard.write([
+          new ClipboardItem({ "image/png": printBlob }),
+        ]);
+        setFeedbackShare(
+          "Imagem copiada! Abra a conversa no WhatsApp e aperte Ctrl + V para colar o print."
+        );
+      } else {
+        throw new Error(
+          "Seu navegador não suporta cópia direta de imagem. Use o botão 'Baixar Print (PNG)'."
+        );
+      }
+    } catch (err) {
+      setErroShare(
+        (err as Error).message ||
+          "Não foi possível copiar a imagem automaticamente. Use 'Baixar Print (PNG)'."
+      );
+    }
+  };
+
+  const handleBaixarPrint = () => {
+    if (!printPreviewUrl || !pedido) return;
+    const link = document.createElement("a");
+    link.href = printPreviewUrl;
+    link.download = gerarNomeArquivoPrint(pedido.numero);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    setFeedbackShare("Download do print PNG iniciado!");
+  };
+
+  const handleCompartilharNativo = async () => {
+    if (!printBlob || !pedido) return;
+    setErroShare(null);
+    try {
+      const nomeArquivo = gerarNomeArquivoPrint(pedido.numero);
+      const arquivo = new File([printBlob], nomeArquivo, { type: "image/png" });
+      if (navigator.canShare && navigator.canShare({ files: [arquivo] })) {
+        await navigator.share({
+          title: `Pedido ${pedido.numero}`,
+          text: `Resumo do Pedido ${pedido.numero} - ${
+            pedido.cliente.nomeFantasia || pedido.cliente.razaoSocialOuNome
+          }`,
+          files: [arquivo],
+        });
+        setFeedbackShare("Compartilhamento enviado!");
+      } else if (navigator.share) {
+        await navigator.share({
+          title: `Pedido ${pedido.numero}`,
+          text: gerarTextoResumoWhatsApp(pedido),
+        });
+      } else {
+        await handleCopiarImagemPrint();
+      }
+    } catch (err) {
+      if ((err as Error).name !== "AbortError") {
+        setErroShare("Não foi possível abrir o compartilhamento do sistema.");
+      }
+    }
+  };
+
+  const handleCopiarTextoWhatsApp = async () => {
+    if (!pedido) return;
+    setErroShare(null);
+    try {
+      const texto = gerarTextoResumoWhatsApp(pedido);
+      await navigator.clipboard.writeText(texto);
+      setFeedbackShare("Resumo em texto copiado para a área de transferência!");
+    } catch {
+      setErroShare("Não foi possível copiar o texto.");
+    }
+  };
+
   useEffect(() => {
     async function loadPedido() {
       try {
@@ -94,6 +213,12 @@ export default function DetalhesPedidoPage({
         }
         const data = await res.json();
         setPedido(data);
+        if (
+          typeof window !== "undefined" &&
+          new URLSearchParams(window.location.search).get("share") === "1"
+        ) {
+          abrirModalCompartilhamento(data);
+        }
       } catch (err) {
         setError((err as Error).message);
       } finally {
@@ -210,7 +335,16 @@ export default function DetalhesPedidoPage({
           <span>Voltar para Pedidos</span>
         </Link>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => abrirModalCompartilhamento(pedido)}
+            className="inline-flex items-center gap-1.5 text-xs font-semibold bg-emerald-50 border border-emerald-200 hover:bg-emerald-100 text-emerald-800 px-4 py-2 rounded-xl transition shadow-xs cursor-pointer"
+          >
+            <Share2 className="w-3.5 h-3.5 text-emerald-600" />
+            <span>Compartilhar / Print</span>
+          </button>
+
           {pedido.status === "RASCUNHO" && (
             <>
               <Link
@@ -482,6 +616,130 @@ export default function DetalhesPedidoPage({
                 className="px-4 py-2 text-xs font-semibold bg-red-600 hover:bg-red-700 text-white rounded-lg transition disabled:opacity-50 cursor-pointer"
               >
                 {cancelando ? "Cancelando..." : "Confirmar Cancelamento"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Compartilhamento / Print para WhatsApp */}
+      {modalShareAberto && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl max-w-4xl w-full p-5 sm:p-6 shadow-2xl space-y-4 my-8 max-h-[92vh] flex flex-col">
+            {/* Cabeçalho do Modal */}
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3 shrink-0">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-600">
+                  <Share2 className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">
+                    Compartilhar Print do Pedido {pedido.numero}
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Copie a imagem pronta para colar direto no WhatsApp (Ctrl + V) ou baixe o arquivo PNG
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setModalShareAberto(false)}
+                className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition cursor-pointer"
+                title="Fechar"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Botões de Ação Rápida para WhatsApp */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 shrink-0">
+              <button
+                type="button"
+                disabled={gerandoPrint || !printBlob}
+                onClick={handleCopiarImagemPrint}
+                className="flex items-center justify-center gap-2 py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-bold rounded-xl shadow-xs transition cursor-pointer"
+              >
+                <Copy className="w-4 h-4 shrink-0" />
+                <span>Copiar Imagem (Ctrl+V)</span>
+              </button>
+
+              <button
+                type="button"
+                disabled={gerandoPrint || !printPreviewUrl}
+                onClick={handleBaixarPrint}
+                className="flex items-center justify-center gap-2 py-2.5 px-4 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs font-bold rounded-xl shadow-xs transition cursor-pointer"
+              >
+                <Download className="w-4 h-4 shrink-0" />
+                <span>Baixar Print (PNG)</span>
+              </button>
+
+              <button
+                type="button"
+                disabled={gerandoPrint || !printBlob}
+                onClick={handleCompartilharNativo}
+                className="flex items-center justify-center gap-2 py-2.5 px-4 bg-slate-800 hover:bg-slate-900 disabled:opacity-50 text-white text-xs font-semibold rounded-xl shadow-xs transition cursor-pointer"
+              >
+                <Share2 className="w-4 h-4 shrink-0" />
+                <span>Enviar pelo Celular</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleCopiarTextoWhatsApp}
+                className="flex items-center justify-center gap-2 py-2.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl border border-slate-200 transition cursor-pointer"
+              >
+                <FileText className="w-4 h-4 shrink-0" />
+                <span>Copiar Resumo em Texto</span>
+              </button>
+            </div>
+
+            {/* Avisos de Feedback ou Erro */}
+            {feedbackShare && (
+              <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 px-3.5 py-2.5 rounded-xl text-xs font-semibold flex items-center gap-2 shrink-0">
+                <Check className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>{feedbackShare}</span>
+              </div>
+            )}
+
+            {erroShare && (
+              <div className="bg-red-50 border border-red-200 text-red-700 px-3.5 py-2.5 rounded-xl text-xs font-semibold flex items-center gap-2 shrink-0">
+                <AlertTriangle className="w-4 h-4 text-red-600 shrink-0" />
+                <span>{erroShare}</span>
+              </div>
+            )}
+
+            {/* Pré-visualização do Print */}
+            <div className="flex-1 overflow-y-auto bg-slate-100 border border-slate-200 rounded-xl p-3 flex items-center justify-center min-h-[260px]">
+              {gerandoPrint ? (
+                <div className="py-12 text-center text-slate-500 text-xs space-y-2">
+                  <ImageIcon className="w-8 h-8 text-slate-400 mx-auto animate-pulse" />
+                  <p className="font-semibold">Gerando print do pedido em alta resolução...</p>
+                </div>
+              ) : printPreviewUrl ? (
+                /* eslint-disable-next-line @next/next/no-img-element */
+                <img
+                  src={printPreviewUrl}
+                  alt={`Print do Pedido ${pedido.numero}`}
+                  className="max-w-full h-auto rounded-lg shadow-sm border border-slate-200"
+                />
+              ) : (
+                <div className="py-12 text-center text-slate-400 text-xs">
+                  Não foi possível carregar a pré-visualização.
+                </div>
+              )}
+            </div>
+
+            {/* Rodapé do Modal */}
+            <div className="flex items-center justify-between pt-1 shrink-0 text-[11px] text-slate-400">
+              <span>
+                Dica: No WhatsApp Web, clique em &ldquo;Copiar Imagem&rdquo; e pressione Ctrl+V direto na conversa.
+              </span>
+              <button
+                type="button"
+                onClick={() => setModalShareAberto(false)}
+                className="px-4 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg transition cursor-pointer"
+              >
+                Fechar
               </button>
             </div>
           </div>
