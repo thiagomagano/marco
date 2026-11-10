@@ -14,7 +14,17 @@ function copyRecursive(src: string, dest: string) {
 }
 
 function main() {
+  const incluirDb = process.argv.includes("--with-db");
+
   console.log("📦 Preparando pacote standalone para deploy na VPS Ubuntu...");
+  if (!incluirDb) {
+    console.log(
+      "ℹ️  Modo Atualização Segura: 'prisma/dev.db' local NÃO será copiado para evitar sobrescrever o banco de produção na VPS."
+    );
+    console.log(
+      "   (Caso seja o primeiro deploy e queira enviar seu dev.db local, use: npm run deploy:pack -- --with-db)\n"
+    );
+  }
 
   if (!fs.existsSync(STANDALONE_DIR)) {
     console.error(
@@ -43,8 +53,8 @@ function main() {
     copyRecursive(PUBLIC_DIR, path.join(DEPLOY_DIR, "public"));
   }
 
-  // 4. Copia a pasta prisma com o banco SQLite (prisma -> deploy/prisma)
-  console.log("4/5 Copiando banco SQLite e schema Prisma...");
+  // 4. Copia a pasta prisma (schema.prisma e opcionalmente dev.db apenas com --with-db)
+  console.log("4/5 Copiando schema Prisma...");
   const deployPrismaDir = path.join(DEPLOY_DIR, "prisma");
   fs.mkdirSync(deployPrismaDir, { recursive: true });
   if (fs.existsSync(path.join(PRISMA_DIR, "schema.prisma"))) {
@@ -53,7 +63,8 @@ function main() {
       path.join(deployPrismaDir, "schema.prisma")
     );
   }
-  if (fs.existsSync(path.join(PRISMA_DIR, "dev.db"))) {
+  if (incluirDb && fs.existsSync(path.join(PRISMA_DIR, "dev.db"))) {
+    console.log("   -> Incluindo prisma/dev.db local (--with-db ativado)...");
     fs.copyFileSync(
       path.join(PRISMA_DIR, "dev.db"),
       path.join(deployPrismaDir, "dev.db")
@@ -71,7 +82,11 @@ function main() {
     'JWT_SECRET="troque-por-uma-chave-secreta-forte-em-producao-2026"',
     "",
   ].join("\n");
-  fs.writeFileSync(path.join(DEPLOY_DIR, ".env.production.example"), envContent, "utf8");
+  fs.writeFileSync(
+    path.join(DEPLOY_DIR, ".env.production.example"),
+    envContent,
+    "utf8"
+  );
 
   const systemdService = `[Unit]
 Description=Sistema de Pedidos Comerciais (Next.js Standalone)
@@ -90,17 +105,24 @@ RestartSec=5
 [Install]
 WantedBy=multi-user.target
 `;
-  fs.writeFileSync(path.join(DEPLOY_DIR, "marco.service"), systemdService, "utf8");
+  fs.writeFileSync(
+    path.join(DEPLOY_DIR, "marco.service"),
+    systemdService,
+    "utf8"
+  );
 
   const caddyExample = `seu-dominio.com.br {
     encode zstd gzip
     reverse_proxy 127.0.0.1:3000
 }
 `;
-  fs.writeFileSync(path.join(DEPLOY_DIR, "Caddyfile.example"), caddyExample, "utf8");
+  fs.writeFileSync(
+    path.join(DEPLOY_DIR, "Caddyfile.example"),
+    caddyExample,
+    "utf8"
+  );
 
   console.log("\n✅ Pacote pronto na pasta './deploy'!");
-  console.log("👉 Agora basta enviar o conteúdo da pasta './deploy' para '/var/www/marco' na sua VPS.");
 }
 
 main();

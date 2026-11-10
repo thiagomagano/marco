@@ -44,3 +44,4 @@ next-env.d.ts
 # arquivos de importação de dados
 importacao/*
 *.db
+deploy.tar.gz
