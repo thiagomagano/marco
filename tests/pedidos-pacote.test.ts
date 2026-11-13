@@ -159,4 +159,20 @@ describe("Pacote e Agrupamento de Pedidos em Resumo Único", () => {
     assert(nomePng.startsWith("pacote-frigorifico-valupi-"));
     assert(nomePng.endsWith(".png"));
   });
+
+  it("deve bloquear a geração de pacote quando houver pedidos de frigoríficos diferentes", () => {
+    const pedidoOutroFrigorifico: PedidoShareData = {
+      ...pedidosMock[1],
+      frigorifico: {
+        nomeFantasia: "Outro Frigorífico LTDA",
+        cnpj: "99.888.777/0001-66",
+        telefone: "(11) 3333-2222",
+      },
+    };
+
+    assert.throws(
+      () => compilarDadosPacote([pedidosMock[0], pedidoOutroFrigorifico]),
+      /frigoríficos diferentes/i
+    );
+  });
 });

@@ -1877,10 +1877,28 @@ export interface PacotePedidosData {
 }
 
 export function compilarDadosPacote(pedidos: PedidoShareData[]): PacotePedidosData {
-  const frigorificos = Array.from(
-    new Set(pedidos.map((p) => p.frigorifico?.nomeFantasia || "Frigorífico"))
+  if (!pedidos || pedidos.length === 0) {
+    throw new Error("Selecione pelo menos 1 pedido para gerar o resumo do pacote.");
+  }
+
+  const frigorificoKeys = Array.from(
+    new Set(
+      pedidos.map(
+        (p) =>
+          (p.frigorifico as { id?: string; nomeFantasia?: string })?.id ||
+          p.frigorifico?.nomeFantasia ||
+          "Frigorífico"
+      )
+    )
   );
-  const frigorificoNome = frigorificos.join(", ");
+
+  if (frigorificoKeys.length > 1) {
+    throw new Error(
+      "Não é permitido gerar um resumo com pedidos de frigoríficos diferentes. Selecione pedidos de apenas 1 frigorífico."
+    );
+  }
+
+  const frigorificoNome = pedidos[0].frigorifico?.nomeFantasia || "Frigorífico";
 
   let totalValor = 0;
   let totalPeso = 0;

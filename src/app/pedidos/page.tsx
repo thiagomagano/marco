@@ -94,8 +94,9 @@ export default function PedidosPage() {
   });
   const [loading, setLoading] = useState(true);
 
-  // Seleção múltipla para pacote de pedidos
+  // Seleção múltipla para pacote de pedidos (restrito a 1 frigorífico por pacote)
   const [selecionados, setSelecionados] = useState<Set<string>>(new Set());
+  const [avisoSelecao, setAvisoSelecao] = useState<string | null>(null);
 
   // Modal do Pacote de Pedidos
   const [modalPacoteAberto, setModalPacoteAberto] = useState(false);
@@ -201,30 +202,75 @@ export default function PedidosPage() {
     setStatus("TODOS");
   };
 
-  // Gerenciamento de seleção
-  const toggleSelecionarPedido = (id: string) => {
+  const pedidosSelecionadosLista = useMemo(() => {
+    return pedidos.filter((p) => selecionados.has(p.id));
+  }, [pedidos, selecionados]);
+
+  const frigorificoSelecionado = useMemo(() => {
+    if (pedidosSelecionadosLista.length === 0) return null;
+    return pedidosSelecionadosLista[0].frigorifico;
+  }, [pedidosSelecionadosLista]);
+
+  // Gerenciamento de seleção (apenas 1 frigorífico permitido por resumo)
+  const toggleSelecionarPedido = (pedido: PedidoListItem) => {
+    setAvisoSelecao(null);
+    if (selecionados.has(pedido.id)) {
+      setSelecionados((prev) => {
+        const next = new Set(prev);
+        next.delete(pedido.id);
+        return next;
+      });
+      return;
+    }
+
+    if (
+      frigorificoSelecionado &&
+      pedido.frigorifico.id !== frigorificoSelecionado.id
+    ) {
+      setAvisoSelecao(
+        `Não é possível selecionar mais de 1 frigorífico para o mesmo resumo. O pacote atual já está vinculado ao frigorífico "${frigorificoSelecionado.nomeFantasia}".`
+      );
+      return;
+    }
+
     setSelecionados((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
+      next.add(pedido.id);
       return next;
     });
   };
 
   const selecionarTodosVisiveis = () => {
-    if (selecionados.size === pedidos.length) {
-      setSelecionados(new Set());
-    } else {
-      setSelecionados(new Set(pedidos.map((p) => p.id)));
-    }
-  };
+    setAvisoSelecao(null);
+    if (pedidos.length === 0) return;
 
-  const pedidosSelecionadosLista = useMemo(() => {
-    return pedidos.filter((p) => selecionados.has(p.id));
-  }, [pedidos, selecionados]);
+    if (frigorificoSelecionado) {
+      const doMesmoFrigorifico = pedidos.filter(
+        (p) => p.frigorifico.id === frigorificoSelecionado.id
+      );
+      const todosDoMesmoMarcados = doMesmoFrigorifico.every((p) =>
+        selecionados.has(p.id)
+      );
+      if (todosDoMesmoMarcados) {
+        setSelecionados(new Set());
+      } else {
+        setSelecionados(new Set(doMesmoFrigorifico.map((p) => p.id)));
+      }
+      return;
+    }
+
+    const frigsNaLista = Array.from(
+      new Set(pedidos.map((p) => p.frigorifico.id))
+    );
+    if (frigsNaLista.length > 1) {
+      setAvisoSelecao(
+        "Há pedidos de frigoríficos diferentes na lista. Filtre por um frigorífico específico ou selecione o primeiro pedido manualmente para definir o frigorífico do resumo."
+      );
+      return;
+    }
+
+    setSelecionados(new Set(pedidos.map((p) => p.id)));
+  };
 
   const totaisSelecionados = useMemo(() => {
     let valor = 0;
@@ -583,6 +629,23 @@ export default function PedidosPage() {
         </div>
       </div>
 
+      {/* Aviso de Regra de Frigorífico Único */}
+      {avisoSelecao && (
+        <div className="bg-amber-50 border border-amber-200 text-amber-800 px-4 py-3 rounded-xl text-xs font-semibold flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+            <span>{avisoSelecao}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setAvisoSelecao(null)}
+            className="text-amber-600 hover:text-amber-900 p-1 cursor-pointer"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       {/* Listagem de Pedidos */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
         {loading ? (
@@ -634,6 +697,10 @@ export default function PedidosPage() {
                 <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
                   {pedidos.map((p) => {
                     const isChecked = selecionados.has(p.id);
+                    const bloqueadoOutroFrig = Boolean(
+                      frigorificoSelecionado &&
+                        p.frigorifico.id !== frigorificoSelecionado.id
+                    );
                     const statusClass =
                       p.status === "CONFIRMADO"
                         ? "bg-emerald-50 text-emerald-700 border-emerald-200"
@@ -645,14 +712,29 @@ export default function PedidosPage() {
                       <tr
                         key={p.id}
                         className={`transition ${
-                          isChecked ? "bg-blue-50/70" : "hover:bg-slate-50/80"
+                          isChecked
+                            ? "bg-blue-50/70"
+                            : bloqueadoOutroFrig
+                            ? "opacity-50"
+                            : "hover:bg-slate-50/80"
                         }`}
                       >
                         <td className="py-3.5 px-3 text-center">
                           <button
                             type="button"
-                            onClick={() => toggleSelecionarPedido(p.id)}
-                            className="text-slate-400 hover:text-slate-700 cursor-pointer"
+                            onClick={() => toggleSelecionarPedido(p)}
+                            title={
+                              bloqueadoOutroFrig
+                                ? `Bloqueado: o resumo atual é apenas para o frigorífico ${frigorificoSelecionado?.nomeFantasia}`
+                                : isChecked
+                                ? "Desmarcar pedido"
+                                : "Selecionar pedido para o pacote"
+                            }
+                            className={`${
+                              bloqueadoOutroFrig
+                                ? "text-slate-300 cursor-not-allowed"
+                                : "text-slate-400 hover:text-slate-700 cursor-pointer"
+                            }`}
                           >
                             {isChecked ? (
                               <CheckSquare className="w-4 h-4 text-blue-600" />
@@ -732,6 +814,10 @@ export default function PedidosPage() {
             <div className="md:hidden divide-y divide-slate-100">
               {pedidos.map((p) => {
                 const isChecked = selecionados.has(p.id);
+                const bloqueadoOutroFrig = Boolean(
+                  frigorificoSelecionado &&
+                    p.frigorifico.id !== frigorificoSelecionado.id
+                );
                 const statusClass =
                   p.status === "CONFIRMADO"
                     ? "bg-emerald-50 text-emerald-700 border-emerald-200"
@@ -743,15 +829,23 @@ export default function PedidosPage() {
                   <div
                     key={p.id}
                     className={`p-4 transition space-y-2.5 ${
-                      isChecked ? "bg-blue-50/60" : "hover:bg-slate-50"
+                      isChecked
+                        ? "bg-blue-50/60"
+                        : bloqueadoOutroFrig
+                        ? "opacity-50"
+                        : "hover:bg-slate-50"
                     }`}
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <button
                           type="button"
-                          onClick={() => toggleSelecionarPedido(p.id)}
-                          className="p-1 text-slate-400 hover:text-slate-800"
+                          onClick={() => toggleSelecionarPedido(p)}
+                          className={`p-1 ${
+                            bloqueadoOutroFrig
+                              ? "text-slate-300 cursor-not-allowed"
+                              : "text-slate-400 hover:text-slate-800"
+                          }`}
                         >
                           {isChecked ? (
                             <CheckSquare className="w-5 h-5 text-blue-600" />
@@ -833,21 +927,26 @@ export default function PedidosPage() {
                       ? "pedido selecionado"
                       : "pedidos selecionados"}
                   </span>
+                  {frigorificoSelecionado && (
+                    <span className="text-[11px] font-semibold bg-blue-600/30 text-blue-200 border border-blue-500/40 px-2 py-0.5 rounded-md">
+                      {frigorificoSelecionado.nomeFantasia}
+                    </span>
+                  )}
                 </div>
                 <div className="text-xs text-slate-300 mt-0.5">
-                  Total:{" "}
-                  <strong className="text-white">
-                    {formatCurrency(totaisSelecionados.valor)}
-                  </strong>
                   {totaisSelecionados.peso > 0 ? (
                     <span>
-                      {" "}
-                      &bull; Peso:{" "}
+                      Peso:{" "}
                       <strong className="text-white">
                         {formatQuantity(totaisSelecionados.peso, "kg")}
                       </strong>
+                      {" • "}
                     </span>
                   ) : null}
+                  Valor:{" "}
+                  <strong className="text-slate-200">
+                    {formatCurrency(totaisSelecionados.valor)}
+                  </strong>
                 </div>
               </div>
             </div>
@@ -855,7 +954,10 @@ export default function PedidosPage() {
             <div className="flex items-center gap-2 self-end sm:self-auto">
               <button
                 type="button"
-                onClick={() => setSelecionados(new Set())}
+                onClick={() => {
+                  setSelecionados(new Set());
+                  setAvisoSelecao(null);
+                }}
                 className="px-3 py-2 text-xs font-semibold text-slate-400 hover:text-white transition cursor-pointer"
               >
                 Limpar
