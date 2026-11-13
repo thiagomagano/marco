@@ -2,7 +2,7 @@
 set -euo pipefail
 
 APP_DIR="${APP_DIR:-/var/www/marco}"
-HEALTHCHECK_URL="${HEALTHCHECK_URL:-http://127.0.0.1:3000}"
+HEALTHCHECK_URL="${HEALTHCHECK_URL:-http://127.0.0.1:3013}"
 cd "$APP_DIR"
 
 echo "===================================================="
