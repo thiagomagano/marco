@@ -175,4 +175,25 @@ describe("Pacote e Agrupamento de Pedidos em Resumo Único", () => {
       /frigoríficos diferentes/i
     );
   });
+
+  it("deve bloquear a geração de pacote quando houver pedidos em RASCUNHO ou CANCELADOS", () => {
+    const pedidoRascunho: PedidoShareData = {
+      ...pedidosMock[1],
+      status: "RASCUNHO",
+    };
+    const pedidoCancelado: PedidoShareData = {
+      ...pedidosMock[1],
+      status: "CANCELADO",
+    };
+
+    assert.throws(
+      () => compilarDadosPacote([pedidosMock[0], pedidoRascunho]),
+      /Apenas pedidos CONFIRMADOS/i
+    );
+
+    assert.throws(
+      () => compilarDadosPacote([pedidosMock[0], pedidoCancelado]),
+      /Apenas pedidos CONFIRMADOS/i
+    );
+  });
 });

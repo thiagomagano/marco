@@ -1881,6 +1881,13 @@ export function compilarDadosPacote(pedidos: PedidoShareData[]): PacotePedidosDa
     throw new Error("Selecione pelo menos 1 pedido para gerar o resumo do pacote.");
   }
 
+  const naoConfirmados = pedidos.filter((p) => p.status !== "CONFIRMADO");
+  if (naoConfirmados.length > 0) {
+    throw new Error(
+      "Apenas pedidos CONFIRMADOS podem entrar no pacote. Pedidos em rascunho ou cancelados não são permitidos."
+    );
+  }
+
   const frigorificoKeys = Array.from(
     new Set(
       pedidos.map(

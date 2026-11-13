@@ -211,7 +211,7 @@ export default function PedidosPage() {
     return pedidosSelecionadosLista[0].frigorifico;
   }, [pedidosSelecionadosLista]);
 
-  // Gerenciamento de seleção (apenas 1 frigorífico permitido por resumo)
+  // Gerenciamento de seleção (apenas pedidos CONFIRMADOS e de 1 único frigorífico)
   const toggleSelecionarPedido = (pedido: PedidoListItem) => {
     setAvisoSelecao(null);
     if (selecionados.has(pedido.id)) {
@@ -220,6 +220,13 @@ export default function PedidosPage() {
         next.delete(pedido.id);
         return next;
       });
+      return;
+    }
+
+    if (pedido.status !== "CONFIRMADO") {
+      setAvisoSelecao(
+        `O pedido ${pedido.numero} está com status "${pedido.status}". Apenas pedidos CONFIRMADOS podem entrar no pacote.`
+      );
       return;
     }
 
@@ -242,15 +249,23 @@ export default function PedidosPage() {
 
   const selecionarTodosVisiveis = () => {
     setAvisoSelecao(null);
-    if (pedidos.length === 0) return;
+    const confirmadosVisiveis = pedidos.filter(
+      (p) => p.status === "CONFIRMADO"
+    );
+    if (confirmadosVisiveis.length === 0) {
+      setAvisoSelecao(
+        "Não há pedidos CONFIRMADOS na lista atual para selecionar. Pedidos em rascunho ou cancelados não podem entrar no pacote."
+      );
+      return;
+    }
 
     if (frigorificoSelecionado) {
-      const doMesmoFrigorifico = pedidos.filter(
+      const doMesmoFrigorifico = confirmadosVisiveis.filter(
         (p) => p.frigorifico.id === frigorificoSelecionado.id
       );
-      const todosDoMesmoMarcados = doMesmoFrigorifico.every((p) =>
-        selecionados.has(p.id)
-      );
+      const todosDoMesmoMarcados =
+        doMesmoFrigorifico.length > 0 &&
+        doMesmoFrigorifico.every((p) => selecionados.has(p.id));
       if (todosDoMesmoMarcados) {
         setSelecionados(new Set());
       } else {
@@ -260,16 +275,16 @@ export default function PedidosPage() {
     }
 
     const frigsNaLista = Array.from(
-      new Set(pedidos.map((p) => p.frigorifico.id))
+      new Set(confirmadosVisiveis.map((p) => p.frigorifico.id))
     );
     if (frigsNaLista.length > 1) {
       setAvisoSelecao(
-        "Há pedidos de frigoríficos diferentes na lista. Filtre por um frigorífico específico ou selecione o primeiro pedido manualmente para definir o frigorífico do resumo."
+        "Há pedidos confirmados de frigoríficos diferentes na lista. Filtre por um frigorífico específico ou selecione o primeiro pedido manualmente para definir o frigorífico do resumo."
       );
       return;
     }
 
-    setSelecionados(new Set(pedidos.map((p) => p.id)));
+    setSelecionados(new Set(confirmadosVisiveis.map((p) => p.id)));
   };
 
   const totaisSelecionados = useMemo(() => {
@@ -697,10 +712,12 @@ export default function PedidosPage() {
                 <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
                   {pedidos.map((p) => {
                     const isChecked = selecionados.has(p.id);
+                    const bloqueadoStatus = p.status !== "CONFIRMADO";
                     const bloqueadoOutroFrig = Boolean(
                       frigorificoSelecionado &&
                         p.frigorifico.id !== frigorificoSelecionado.id
                     );
+                    const bloqueado = bloqueadoStatus || bloqueadoOutroFrig;
                     const statusClass =
                       p.status === "CONFIRMADO"
                         ? "bg-emerald-50 text-emerald-700 border-emerald-200"
@@ -714,8 +731,6 @@ export default function PedidosPage() {
                         className={`transition ${
                           isChecked
                             ? "bg-blue-50/70"
-                            : bloqueadoOutroFrig
-                            ? "opacity-50"
                             : "hover:bg-slate-50/80"
                         }`}
                       >
@@ -724,15 +739,17 @@ export default function PedidosPage() {
                             type="button"
                             onClick={() => toggleSelecionarPedido(p)}
                             title={
-                              bloqueadoOutroFrig
+                              bloqueadoStatus
+                                ? `Bloqueado: apenas pedidos CONFIRMADOS podem entrar no pacote`
+                                : bloqueadoOutroFrig
                                 ? `Bloqueado: o resumo atual é apenas para o frigorífico ${frigorificoSelecionado?.nomeFantasia}`
                                 : isChecked
                                 ? "Desmarcar pedido"
                                 : "Selecionar pedido para o pacote"
                             }
                             className={`${
-                              bloqueadoOutroFrig
-                                ? "text-slate-300 cursor-not-allowed"
+                              bloqueado
+                                ? "text-slate-300 opacity-50 cursor-not-allowed"
                                 : "text-slate-400 hover:text-slate-700 cursor-pointer"
                             }`}
                           >
@@ -814,10 +831,12 @@ export default function PedidosPage() {
             <div className="md:hidden divide-y divide-slate-100">
               {pedidos.map((p) => {
                 const isChecked = selecionados.has(p.id);
+                const bloqueadoStatus = p.status !== "CONFIRMADO";
                 const bloqueadoOutroFrig = Boolean(
                   frigorificoSelecionado &&
                     p.frigorifico.id !== frigorificoSelecionado.id
                 );
+                const bloqueado = bloqueadoStatus || bloqueadoOutroFrig;
                 const statusClass =
                   p.status === "CONFIRMADO"
                     ? "bg-emerald-50 text-emerald-700 border-emerald-200"
@@ -831,8 +850,6 @@ export default function PedidosPage() {
                     className={`p-4 transition space-y-2.5 ${
                       isChecked
                         ? "bg-blue-50/60"
-                        : bloqueadoOutroFrig
-                        ? "opacity-50"
                         : "hover:bg-slate-50"
                     }`}
                   >
@@ -842,8 +859,8 @@ export default function PedidosPage() {
                           type="button"
                           onClick={() => toggleSelecionarPedido(p)}
                           className={`p-1 ${
-                            bloqueadoOutroFrig
-                              ? "text-slate-300 cursor-not-allowed"
+                            bloqueado
+                              ? "text-slate-300 opacity-50 cursor-not-allowed"
                               : "text-slate-400 hover:text-slate-800"
                           }`}
                         >
