@@ -19,7 +19,7 @@ fi
 # 2. Baixa as atualizações do GitHub preservando o banco e o .env de produção
 echo "🔄 2/6 Baixando código atualizado do GitHub..."
 git checkout -- prisma/dev.db 2>/dev/null || true
-git pull origin master
+git pull origin main
 
 # Restaura o banco de produção recém-salvo caso o git pull tenha tocado nele
 if [ -n "$TIMESTAMP" ] && [ -f "backups/dev.db.pre_deploy_${TIMESTAMP}.bak" ]; then

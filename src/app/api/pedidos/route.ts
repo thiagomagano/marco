@@ -57,19 +57,50 @@ export async function GET(request: Request) {
       }
     }
 
+    const idsParam = searchParams.get("ids");
+    if (idsParam) {
+      const ids = idsParam
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      if (ids.length > 0) {
+        where.id = { in: ids };
+      }
+    }
+
     const pedidos = await prisma.pedido.findMany({
       where,
       orderBy: { dataCriacao: "desc" },
       include: {
-        frigorifico: { select: { id: true, nomeFantasia: true } },
-        cliente: { select: { id: true, razaoSocialOuNome: true, nomeFantasia: true } },
-        vendedor: { select: { id: true, nome: true } },
+        frigorifico: {
+          select: {
+            id: true,
+            nomeFantasia: true,
+            cnpj: true,
+            telefone: true,
+          },
+        },
+        cliente: {
+          select: {
+            id: true,
+            razaoSocialOuNome: true,
+            nomeFantasia: true,
+            cnpj: true,
+            telefone: true,
+            endereco: true,
+            bairro: true,
+            cidade: true,
+            cep: true,
+          },
+        },
+        vendedor: { select: { id: true, nome: true, telefone: true } },
         itens: {
           select: {
             id: true,
             produtoNomeSnapshot: true,
             produtoCodigoSnapshot: true,
             produtoUnidadeSnapshot: true,
+            produtoEmbalagemSnapshot: true,
             quantidade: true,
             precoUnitario: true,
             subtotal: true,
