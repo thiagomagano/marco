@@ -52,10 +52,8 @@ if [ -d "public" ]; then
   cp -r public .next/standalone/
 fi
 
-# 6. Ajusta permissões e reinicia o serviço no systemd
-echo "🔁 6/7 Ajustando permissões e reiniciando serviço 'marco'..."
-sudo chown -R www-data:www-data "$APP_DIR"
-sudo chmod -R 775 "$APP_DIR/prisma"
+# 6. Reinicia o serviço no systemd
+echo "🔁 6/7 Reiniciando serviço 'marco'..."
 sudo systemctl restart marco
 
 # 7. Healthcheck pós-deploy
