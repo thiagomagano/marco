@@ -52,6 +52,7 @@ jobs:
           key: ${{ secrets.VPS_SSH_KEY }}
           script: |
             set -euo pipefail
+            git config --global --get-all safe.directory | grep -qx "/var/www/marco" || git config --global --add safe.directory /var/www/marco
             cd /var/www/marco
             git fetch origin main
             git reset --hard origin/main

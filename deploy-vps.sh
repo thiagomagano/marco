@@ -25,6 +25,7 @@ fi
 # 2. Atualiza o código a partir do GitHub (preserva .env, backups/ e prisma/dev.db)
 if [ "${SKIP_GIT_PULL:-0}" != "1" ]; then
   echo "🔄 2/7 Baixando código atualizado do GitHub..."
+  git config --global --get-all safe.directory | grep -qx "$APP_DIR" || git config --global --add safe.directory "$APP_DIR"
   git fetch origin main
   git reset --hard origin/main
 else
