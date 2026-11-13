@@ -1866,3 +1866,1058 @@ export async function gerarArquivoPdfPedido(
 
   return new Blob(chunks, { type: "application/pdf" });
 }
+
+
+export interface PacotePedidosData {
+  frigorificoNome: string;
+  dataGeracao: string;
+  pedidos: PedidoShareData[];
+  totalGeralValor: number;
+  totalGeralPesoKg: number;
+}
+
+export function compilarDadosPacote(pedidos: PedidoShareData[]): PacotePedidosData {
+  const frigorificos = Array.from(
+    new Set(pedidos.map((p) => p.frigorifico?.nomeFantasia || "Frigorífico"))
+  );
+  const frigorificoNome = frigorificos.join(", ");
+
+  let totalValor = 0;
+  let totalPeso = 0;
+
+  for (const p of pedidos) {
+    totalValor += Number(p.totalEstimado || 0);
+    if (p.pesoInformadoKg) {
+      totalPeso += Number(p.pesoInformadoKg);
+    }
+  }
+
+  return {
+    frigorificoNome,
+    dataGeracao: new Date().toISOString(),
+    pedidos,
+    totalGeralValor: Math.round(totalValor * 100) / 100,
+    totalGeralPesoKg: Math.round(totalPeso * 1000) / 1000,
+  };
+}
+
+export function gerarNomeArquivoPacote(prefixo: string, ext: "png" | "pdf" | "txt"): string {
+  const dataStr = new Date().toISOString().slice(0, 10);
+  const limpo = (prefixo || "pacote-pedidos")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return `pacote-${limpo}-${dataStr}.${ext}`;
+}
+
+export function gerarTextoWhatsAppPacote(pacote: PacotePedidosData): string {
+  const linhas: string[] = [];
+
+  linhas.push(`*📦 PACOTE DE PEDIDOS - ${pacote.frigorificoNome.toUpperCase()}*`);
+  linhas.push(`Data: ${new Date(pacote.dataGeracao).toLocaleDateString("pt-BR")}`);
+  linhas.push(`Total de Pedidos: *${pacote.pedidos.length}*`);
+  linhas.push("===============================");
+  linhas.push("");
+
+  pacote.pedidos.forEach((p, index) => {
+    const nomeCliente = p.cliente.nomeFantasia || p.cliente.razaoSocialOuNome;
+    linhas.push(`*PEDIDO ${index + 1}: ${p.numero}* [${p.status}]`);
+    linhas.push(`*Cliente:* ${nomeCliente}`);
+    if (p.cliente.cnpj) {
+      linhas.push(`*CNPJ:* ${p.cliente.cnpj}`);
+    }
+    if (p.cliente.cidade) {
+      linhas.push(`*Cidade:* ${p.cliente.cidade}`);
+    }
+    if (p.vendedor?.nome) {
+      linhas.push(`*Vendedor:* ${p.vendedor.nome}`);
+    }
+
+    linhas.push(`*Itens (${p.itens.length}):*`);
+    for (const item of p.itens) {
+      const emb = item.produtoEmbalagemSnapshot
+        ? ` [${item.produtoEmbalagemSnapshot}]`
+        : "";
+      const qtd = formatQuantity(item.quantidade, item.produtoUnidadeSnapshot);
+      const preco = formatCurrency(item.precoUnitario);
+      const sub = formatCurrency(item.subtotal);
+      linhas.push(
+        `  • (${item.produtoCodigoSnapshot}) ${item.produtoNomeSnapshot}${emb}: ${qtd} x ${preco} = *${sub}*`
+      );
+    }
+
+    const subtotalPed = formatCurrency(p.totalEstimado);
+    const pesoPed = p.pesoInformadoKg
+      ? `*Peso do Pedido: ${formatQuantity(p.pesoInformadoKg, "kg")}* | `
+      : "";
+    linhas.push(`${pesoPed}Subtotal: ${subtotalPed}`);
+
+    if (p.observacoes && p.observacoes.trim()) {
+      linhas.push(`Obs: ${p.observacoes.trim()}`);
+    }
+
+    linhas.push("-------------------------------");
+  });
+
+  linhas.push("");
+  linhas.push(`*📊 TOTAIS CONSOLIDADOS DO PACOTE:*`);
+  linhas.push(`• Total de Pedidos: *${pacote.pedidos.length}*`);
+  if (pacote.totalGeralPesoKg > 0) {
+    linhas.push(
+      `• *PESO TOTAL DO PACOTE: ${formatQuantity(pacote.totalGeralPesoKg, "kg")}*`
+    );
+  }
+  linhas.push(`• Valor Total do Pacote: ${formatCurrency(pacote.totalGeralValor)}`);
+  linhas.push("===============================");
+
+  return linhas.join("\n");
+}
+
+export function gerarHtmlImpressaoA4Pacote(pacote: PacotePedidosData): string {
+  const dataGeracaoStr = new Date(pacote.dataGeracao).toLocaleString("pt-BR");
+
+  const blocosPedidosHtml = pacote.pedidos
+    .map((p, idx) => {
+      const nomeCliente = p.cliente.nomeFantasia || p.cliente.razaoSocialOuNome;
+      const razaoComplemento =
+        p.cliente.nomeFantasia &&
+        p.cliente.razaoSocialOuNome &&
+        p.cliente.nomeFantasia !== p.cliente.razaoSocialOuNome
+          ? ` (${p.cliente.razaoSocialOuNome})`
+          : "";
+      const linhasItens = p.itens
+        .map(
+          (it, i) => `
+        <tr>
+          <td class="center">${i + 1}</td>
+          <td class="mono bold">${escapeHtml(it.produtoCodigoSnapshot || "-")}</td>
+          <td class="bold">${escapeHtml(it.produtoNomeSnapshot)}</td>
+          <td>${escapeHtml(it.produtoEmbalagemSnapshot || "-")}</td>
+          <td class="center">${escapeHtml(it.produtoUnidadeSnapshot)}</td>
+          <td class="right bold">${escapeHtml(
+            formatQuantity(it.quantidade, it.produtoUnidadeSnapshot)
+          )}</td>
+          <td class="right">${escapeHtml(formatCurrency(it.precoUnitario))}</td>
+          <td class="right bold">${escapeHtml(formatCurrency(it.subtotal))}</td>
+        </tr>`
+        )
+        .join("");
+
+      return `
+      <div class="order-block">
+        <div class="order-header">
+          <div>
+            <span class="order-idx">#${idx + 1}</span>
+            <span class="order-num">${escapeHtml(p.numero)}</span>
+            <span class="order-status">[${escapeHtml(p.status)}]</span>
+          </div>
+          <div class="order-subtotal">
+            ${
+              p.pesoInformadoKg
+                ? `<span class="order-weight-highlight">Peso: ${escapeHtml(
+                    formatQuantity(p.pesoInformadoKg, "kg")
+                  )}</span>`
+                : ""
+            }
+            <span class="order-val-sub">Valor: ${escapeHtml(
+              formatCurrency(p.totalEstimado)
+            )}</span>
+          </div>
+        </div>
+
+        <div class="client-info-box">
+          <div class="client-name-row">
+            <span class="info-label">Cliente:</span>
+            <strong>${escapeHtml(nomeCliente)}${escapeHtml(razaoComplemento)}</strong>
+          </div>
+          <div class="client-meta-row">
+            <div><span class="info-label">CNPJ:</span> ${escapeHtml(p.cliente.cnpj || "-")}</div>
+            <div><span class="info-label">Cidade:</span> ${escapeHtml(p.cliente.cidade || "-")}</div>
+            <div><span class="info-label">Vendedor:</span> ${escapeHtml(p.vendedor?.nome || "-")}</div>
+          </div>
+        </div>
+
+        <table class="items-table">
+          <thead>
+            <tr>
+              <th class="center" style="width: 28px;">#</th>
+              <th style="width: 60px;">Código</th>
+              <th>Produto</th>
+              <th style="width: 95px;">Embalagem</th>
+              <th class="center" style="width: 44px;">Unid.</th>
+              <th class="right" style="width: 80px;">Qtd.</th>
+              <th class="right" style="width: 85px;">Preço Unit.</th>
+              <th class="right" style="width: 90px;">Subtotal</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${linhasItens}
+          </tbody>
+        </table>
+        ${
+          p.observacoes && p.observacoes.trim()
+            ? `<div class="order-obs"><strong>Obs:</strong> ${escapeHtml(
+                p.observacoes.trim()
+              )}</div>`
+            : ""
+        }
+      </div>`;
+    })
+    .join("");
+
+  return `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <title>Pacote de Pedidos - ${escapeHtml(pacote.frigorificoNome)}</title>
+  <style>
+    @page {
+      size: A4 portrait;
+      margin: 12mm;
+    }
+    * {
+      box-sizing: border-box;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    body {
+      margin: 0;
+      padding: 0;
+      background: #ffffff;
+      color: #000000;
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 10.5px;
+      line-height: 1.35;
+    }
+    .page {
+      width: 100%;
+      max-width: 186mm;
+      margin: 0 auto;
+    }
+    .main-header {
+      border: 1.5px solid #000000;
+      padding: 10px 14px;
+      margin-bottom: 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .main-title {
+      font-size: 14px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .main-subtitle {
+      font-size: 10px;
+      color: #333333;
+      margin-top: 2px;
+    }
+    .main-totals-badge {
+      text-align: right;
+    }
+    .main-totals-val {
+      font-size: 16px;
+      font-weight: 800;
+    }
+    .order-block {
+      border: 1px solid #000000;
+      margin-bottom: 12px;
+      page-break-inside: avoid;
+    }
+    .order-header {
+      background: #f0f0f0;
+      border-bottom: 1px solid #000000;
+      padding: 6px 10px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 10px;
+    }
+    .order-idx {
+      font-weight: 800;
+      margin-right: 6px;
+    }
+    .order-num {
+      font-weight: 800;
+      font-size: 11px;
+      margin-right: 6px;
+    }
+    .order-status {
+      font-weight: bold;
+      color: #444444;
+    }
+    .order-subtotal {
+      font-size: 10.5px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .order-weight-highlight {
+      font-size: 12px;
+      font-weight: 800;
+      border: 1px solid #000000;
+      background: #ffffff;
+      padding: 1px 6px;
+    }
+    .order-val-sub {
+      font-size: 10px;
+      color: #333333;
+      font-weight: bold;
+    }
+    .client-info-box {
+      background: #ffffff;
+      border-bottom: 1px solid #000000;
+      padding: 6px 10px;
+      font-size: 10px;
+    }
+    .client-name-row {
+      margin-bottom: 3px;
+      font-size: 10.5px;
+      word-break: break-word;
+    }
+    .client-meta-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+      font-size: 9.5px;
+      color: #222222;
+    }
+    .info-label {
+      font-weight: bold;
+      color: #444444;
+      text-transform: uppercase;
+      font-size: 8.5px;
+      margin-right: 3px;
+    }
+    .items-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .items-table th,
+    .items-table td {
+      border-bottom: 1px solid #cccccc;
+      border-right: 1px solid #cccccc;
+      padding: 4px 6px;
+      font-size: 9.5px;
+    }
+    .items-table th:last-child,
+    .items-table td:last-child {
+      border-right: none;
+    }
+    .items-table tr:last-child td {
+      border-bottom: none;
+    }
+    .items-table th {
+      background: #fafafa;
+      font-weight: bold;
+      text-transform: uppercase;
+      font-size: 8.5px;
+      text-align: left;
+    }
+    .center { text-align: center !important; }
+    .right { text-align: right !important; }
+    .bold { font-weight: bold; }
+    .mono { font-family: "Courier New", Courier, monospace; }
+    .order-obs {
+      padding: 4px 8px;
+      border-top: 1px solid #e0e0e0;
+      font-size: 9px;
+      color: #333333;
+      background: #fff;
+    }
+    .summary-box {
+      border: 1.5px solid #000000;
+      background: #f9f9f9;
+      padding: 10px 14px;
+      margin-top: 14px;
+      page-break-inside: avoid;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .summary-title {
+      font-size: 11px;
+      font-weight: 800;
+      text-transform: uppercase;
+    }
+    .summary-details {
+      font-size: 10px;
+      color: #333333;
+      margin-top: 2px;
+    }
+    .summary-total {
+      text-align: right;
+    }
+    .summary-total-val {
+      font-size: 18px;
+      font-weight: 800;
+    }
+    .footer-meta {
+      margin-top: 16px;
+      border-top: 1px dashed #777777;
+      padding-top: 6px;
+      display: flex;
+      justify-content: space-between;
+      font-size: 9px;
+      color: #444444;
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="main-header">
+      <div>
+        <div class="main-title">Pacote de Pedidos &bull; ${escapeHtml(
+          pacote.frigorificoNome
+        )}</div>
+        <div class="main-subtitle">
+          Gerado em ${escapeHtml(dataGeracaoStr)} &bull; <strong>${
+            pacote.pedidos.length
+          }</strong> pedidos consolidados
+        </div>
+      </div>
+      <div class="main-totals-badge">
+        ${
+          pacote.totalGeralPesoKg > 0
+            ? `<div style="font-size: 9px; text-transform: uppercase; font-weight: bold;">Peso Total do Pacote</div>
+               <div class="main-totals-val">${escapeHtml(
+                 formatQuantity(pacote.totalGeralPesoKg, "kg")
+               )}</div>
+               <div style="font-size: 10.5px; font-weight: bold; color: #333333; margin-top: 2px;">Valor Total: ${escapeHtml(
+                 formatCurrency(pacote.totalGeralValor)
+               )}</div>`
+            : `<div style="font-size: 9px; text-transform: uppercase; font-weight: bold;">Valor Total do Pacote</div>
+               <div class="main-totals-val">${escapeHtml(
+                 formatCurrency(pacote.totalGeralValor)
+               )}</div>`
+        }
+      </div>
+    </div>
+
+    ${blocosPedidosHtml}
+
+    <div class="summary-box">
+      <div>
+        <div class="summary-title">Resumo Geral Consolidado</div>
+        <div class="summary-details">
+          Total de Pedidos: <strong>${pacote.pedidos.length}</strong>
+          &bull; Valor Total Estimado: <strong>${escapeHtml(
+            formatCurrency(pacote.totalGeralValor)
+          )}</strong>
+        </div>
+      </div>
+      <div class="summary-total">
+        ${
+          pacote.totalGeralPesoKg > 0
+            ? `<div style="font-size: 9px; text-transform: uppercase; font-weight: bold;">Peso Total Consolidado</div>
+               <div class="summary-total-val">${escapeHtml(
+                 formatQuantity(pacote.totalGeralPesoKg, "kg")
+               )}</div>`
+            : `<div style="font-size: 9px; text-transform: uppercase; font-weight: bold;">Total Geral</div>
+               <div class="summary-total-val">${escapeHtml(
+                 formatCurrency(pacote.totalGeralValor)
+               )}</div>`
+        }
+      </div>
+    </div>
+
+    <div class="footer-meta">
+      <span>Sistema de Pedidos Comerciais &bull; Pacote Consolidado</span>
+      <span>${escapeHtml(dataGeracaoStr)}</span>
+    </div>
+  </div>
+</body>
+</html>`;
+}
+
+export function imprimirPacoteEmPapel(pacote: PacotePedidosData): void {
+  const html = gerarHtmlImpressaoA4Pacote(pacote);
+  const iframe = document.createElement("iframe");
+  iframe.style.position = "fixed";
+  iframe.style.right = "0";
+  iframe.style.bottom = "0";
+  iframe.style.width = "0";
+  iframe.style.height = "0";
+  iframe.style.border = "0";
+  document.body.appendChild(iframe);
+
+  const doc = iframe.contentWindow?.document;
+  if (!doc || !iframe.contentWindow) {
+    document.body.removeChild(iframe);
+    throw new Error("Não foi possível inicializar a janela de impressão.");
+  }
+
+  doc.open();
+  doc.write(html);
+  doc.close();
+
+  setTimeout(() => {
+    iframe.contentWindow?.focus();
+    iframe.contentWindow?.print();
+    setTimeout(() => {
+      if (document.body.contains(iframe)) {
+        document.body.removeChild(iframe);
+      }
+    }, 2000);
+  }, 250);
+}
+
+
+export async function renderizarPaginasA4PacoteCanvas(
+  pacote: PacotePedidosData
+): Promise<HTMLCanvasElement[]> {
+  const FONT_SANS = "Arial, Helvetica, sans-serif";
+  const FONT_MONO = "'Courier New', Courier, monospace";
+
+  const PAGE_W = 794;
+  const PAGE_H = 1123;
+  const MARGIN = 40;
+  const CONTENT_W = PAGE_W - MARGIN * 2;
+  const SCALE = 2;
+
+  const measureCanvas = document.createElement("canvas");
+  const mCtx = measureCanvas.getContext("2d");
+  if (!mCtx) {
+    throw new Error("Contexto Canvas 2D indisponível.");
+  }
+
+  // Medição da altura dinâmica necessária
+  let dynamicHeight = MARGIN * 2 + 86 + 24; // Header e margens
+
+  const PROD_COL_W = 230;
+  const CLIENT_NAME_MAX_W = CONTENT_W - 72;
+
+  const measuredOrders = pacote.pedidos.map((p) => {
+    const nomeCliente = p.cliente.nomeFantasia || p.cliente.razaoSocialOuNome;
+    const razaoComplemento =
+      p.cliente.nomeFantasia &&
+      p.cliente.razaoSocialOuNome &&
+      p.cliente.nomeFantasia !== p.cliente.razaoSocialOuNome
+        ? ` (${p.cliente.razaoSocialOuNome})`
+        : "";
+
+    mCtx.font = `700 10.5px ${FONT_SANS}`;
+    const clientNameLines = wrapTextLines(
+      mCtx,
+      `${nomeCliente}${razaoComplemento}`,
+      CLIENT_NAME_MAX_W
+    );
+    const clientBoxH = 16 + clientNameLines.length * 14 + 20;
+
+    mCtx.font = `700 10px ${FONT_SANS}`;
+    const itemRows = p.itens.map((it) => {
+      const lines = wrapTextLines(
+        mCtx,
+        it.produtoNomeSnapshot || "-",
+        PROD_COL_W
+      );
+      const h = Math.max(22, lines.length * 13 + 8);
+      return { lines, h };
+    });
+    const itemsH = itemRows.reduce((a, b) => a + b.h, 0);
+    const obsH = p.observacoes && p.observacoes.trim() ? 22 : 0;
+    const pHeaderH = 26;
+    const thH = 20;
+    const blockH = pHeaderH + clientBoxH + thH + itemsH + obsH + 12;
+    dynamicHeight += blockH;
+    return { clientNameLines, clientBoxH, itemRows, blockH };
+  });
+
+  dynamicHeight += 76 + 40; // Summary box e footer
+
+  const usablePageH = PAGE_H - MARGIN * 2;
+  const numPages = Math.max(1, Math.ceil(dynamicHeight / usablePageH));
+  const masterH = Math.max(PAGE_H, MARGIN * 2 + numPages * usablePageH);
+
+  const masterCanvas = document.createElement("canvas");
+  masterCanvas.width = PAGE_W * SCALE;
+  masterCanvas.height = masterH * SCALE;
+  const ctx = masterCanvas.getContext("2d");
+  if (!ctx) throw new Error("Erro ao criar canvas do pacote.");
+
+  ctx.scale(SCALE, SCALE);
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, PAGE_W, masterH);
+
+  let y = MARGIN;
+  const x0 = MARGIN;
+  const xRight = MARGIN + CONTENT_W;
+
+  // Header do Pacote
+  const headerH = 74;
+  ctx.strokeStyle = "#000000";
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(x0, y, CONTENT_W, headerH);
+
+  ctx.fillStyle = "#000000";
+  ctx.font = `800 15px ${FONT_SANS}`;
+  ctx.textAlign = "left";
+  ctx.fillText(
+    `PACOTE DE PEDIDOS • ${pacote.frigorificoNome.toUpperCase()}`,
+    x0 + 12,
+    y + 28
+  );
+
+  ctx.font = `400 10px ${FONT_SANS}`;
+  ctx.fillStyle = "#444444";
+  ctx.fillText(
+    `Gerado em ${new Date(pacote.dataGeracao).toLocaleString("pt-BR")} • ${
+      pacote.pedidos.length
+    } pedidos consolidados`,
+    x0 + 12,
+    y + 50
+  );
+
+  ctx.textAlign = "right";
+  if (pacote.totalGeralPesoKg > 0) {
+    ctx.fillStyle = "#222222";
+    ctx.font = `700 9px ${FONT_SANS}`;
+    ctx.fillText("PESO TOTAL DO PACOTE", xRight - 12, y + 20);
+
+    ctx.fillStyle = "#000000";
+    ctx.font = `800 18px ${FONT_SANS}`;
+    ctx.fillText(
+      formatQuantity(pacote.totalGeralPesoKg, "kg"),
+      xRight - 12,
+      y + 42
+    );
+
+    ctx.fillStyle = "#333333";
+    ctx.font = `700 10.5px ${FONT_SANS}`;
+    ctx.fillText(
+      `Valor Total: ${formatCurrency(pacote.totalGeralValor)}`,
+      xRight - 12,
+      y + 60
+    );
+  } else {
+    ctx.fillStyle = "#222222";
+    ctx.font = `700 9.5px ${FONT_SANS}`;
+    ctx.fillText("VALOR TOTAL DO PACOTE", xRight - 12, y + 24);
+
+    ctx.fillStyle = "#000000";
+    ctx.font = `800 18px ${FONT_SANS}`;
+    ctx.fillText(formatCurrency(pacote.totalGeralValor), xRight - 12, y + 48);
+  }
+
+  y += headerH + 14;
+
+  // Blocos de Pedidos
+  const colWidths = [28, 64, 240, 96, 44, 76, 80, 86]; // 714
+  const colStarts: number[] = [];
+  let curX = x0;
+  for (const w of colWidths) {
+    colStarts.push(curX);
+    curX += w;
+  }
+
+  pacote.pedidos.forEach((p, idx) => {
+    const { clientNameLines, clientBoxH, itemRows, blockH } = measuredOrders[idx];
+
+    // Borda externa do Bloco do Pedido
+    ctx.strokeStyle = "#000000";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x0, y, CONTENT_W, blockH - 12);
+
+    // Faixa 1: Header do Pedido (#, Número, Status | Peso em destaque + Valor)
+    const pHeaderH = 26;
+    ctx.fillStyle = "#f0f0f0";
+    ctx.fillRect(x0, y, CONTENT_W, pHeaderH);
+    ctx.strokeRect(x0, y, CONTENT_W, pHeaderH);
+
+    ctx.fillStyle = "#000000";
+    ctx.font = `800 10.5px ${FONT_SANS}`;
+    ctx.textAlign = "left";
+    ctx.fillText(
+      `#${idx + 1}   ${p.numero}   [${p.status}]`,
+      x0 + 8,
+      y + 17
+    );
+
+    ctx.textAlign = "right";
+    const valTxt = `Valor: ${formatCurrency(p.totalEstimado)}`;
+    ctx.font = `700 9.5px ${FONT_SANS}`;
+    ctx.fillStyle = "#333333";
+    ctx.fillText(valTxt, xRight - 8, y + 17);
+    const valW = ctx.measureText(valTxt).width;
+
+    if (p.pesoInformadoKg) {
+      ctx.fillStyle = "#000000";
+      ctx.font = `800 11.5px ${FONT_SANS}`;
+      ctx.fillText(
+        `Peso: ${formatQuantity(p.pesoInformadoKg, "kg")}`,
+        xRight - 18 - valW,
+        y + 17
+      );
+    }
+
+    // Faixa 2: Caixa separada com dados do Cliente (Nome, CNPJ, Cidade, Vendedor)
+    let py = y + pHeaderH;
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(x0, py, CONTENT_W, clientBoxH);
+    ctx.strokeStyle = "#000000";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x0, py, CONTENT_W, clientBoxH);
+
+    ctx.textAlign = "left";
+    ctx.fillStyle = "#444444";
+    ctx.font = `700 8.5px ${FONT_SANS}`;
+    ctx.fillText("CLIENTE:", x0 + 8, py + 15);
+
+    ctx.fillStyle = "#000000";
+    ctx.font = `700 10.5px ${FONT_SANS}`;
+    clientNameLines.forEach((line, lIdx) => {
+      ctx.fillText(line, x0 + 56, py + 15 + lIdx * 14);
+    });
+
+    const metaY = py + 16 + clientNameLines.length * 14 + 4;
+    const metaColW = CONTENT_W / 3;
+
+    ctx.fillStyle = "#444444";
+    ctx.font = `700 8.5px ${FONT_SANS}`;
+    ctx.fillText("CNPJ:", x0 + 8, metaY);
+    ctx.fillStyle = "#111111";
+    ctx.font = `600 9.5px ${FONT_SANS}`;
+    ctx.fillText(p.cliente.cnpj || "-", x0 + 40, metaY);
+
+    ctx.fillStyle = "#444444";
+    ctx.font = `700 8.5px ${FONT_SANS}`;
+    ctx.fillText("CIDADE:", x0 + metaColW, metaY);
+    ctx.fillStyle = "#111111";
+    ctx.font = `600 9.5px ${FONT_SANS}`;
+    ctx.fillText(p.cliente.cidade || "-", x0 + metaColW + 44, metaY);
+
+    ctx.fillStyle = "#444444";
+    ctx.font = `700 8.5px ${FONT_SANS}`;
+    ctx.fillText("VENDEDOR:", x0 + metaColW * 2, metaY);
+    ctx.fillStyle = "#111111";
+    ctx.font = `600 9.5px ${FONT_SANS}`;
+    ctx.fillText(p.vendedor?.nome || "-", x0 + metaColW * 2 + 56, metaY);
+
+    py += clientBoxH;
+
+    // Cabeçalho da Tabela
+    const thH = 20;
+    ctx.fillStyle = "#fafafa";
+    ctx.fillRect(x0, py, CONTENT_W, thH);
+    ctx.strokeRect(x0, py, CONTENT_W, thH);
+
+    const headers = [
+      { text: "#", align: "center" as const },
+      { text: "CÓDIGO", align: "left" as const },
+      { text: "PRODUTO", align: "left" as const },
+      { text: "EMBALAGEM", align: "left" as const },
+      { text: "UNID.", align: "center" as const },
+      { text: "QTD.", align: "right" as const },
+      { text: "PREÇO UNIT.", align: "right" as const },
+      { text: "SUBTOTAL", align: "right" as const },
+    ];
+
+    ctx.fillStyle = "#333333";
+    ctx.font = `700 8.5px ${FONT_SANS}`;
+    headers.forEach((h, i) => {
+      const cx = colStarts[i];
+      const cw = colWidths[i];
+      if (h.align === "center") {
+        ctx.textAlign = "center";
+        ctx.fillText(h.text, cx + cw / 2, py + 13);
+      } else if (h.align === "right") {
+        ctx.textAlign = "right";
+        ctx.fillText(h.text, cx + cw - 4, py + 13);
+      } else {
+        ctx.textAlign = "left";
+        ctx.fillText(h.text, cx + 4, py + 13);
+      }
+    });
+
+    py += thH;
+
+    // Itens
+    p.itens.forEach((it, iIdx) => {
+      const { lines, h } = itemRows[iIdx];
+      ctx.strokeStyle = "#cccccc";
+      ctx.lineWidth = 0.8;
+      ctx.strokeRect(x0, py, CONTENT_W, h);
+
+      for (let c = 1; c < colStarts.length; c++) {
+        ctx.beginPath();
+        ctx.moveTo(colStarts[c], py);
+        ctx.lineTo(colStarts[c], py + h);
+        ctx.stroke();
+      }
+
+      ctx.fillStyle = "#000000";
+      const ty = py + 14;
+
+      ctx.font = `400 9px ${FONT_SANS}`;
+      ctx.textAlign = "center";
+      ctx.fillText(String(iIdx + 1), colStarts[0] + colWidths[0] / 2, ty);
+
+      ctx.font = `700 9px ${FONT_MONO}`;
+      ctx.textAlign = "left";
+      ctx.fillText(it.produtoCodigoSnapshot || "-", colStarts[1] + 4, ty);
+
+      ctx.font = `700 9px ${FONT_SANS}`;
+      lines.forEach((l, lIdx) => {
+        ctx.fillText(l, colStarts[2] + 4, ty + lIdx * 13);
+      });
+
+      ctx.font = `400 8.5px ${FONT_SANS}`;
+      ctx.fillText(it.produtoEmbalagemSnapshot || "-", colStarts[3] + 4, ty);
+
+      ctx.textAlign = "center";
+      ctx.fillText(it.produtoUnidadeSnapshot, colStarts[4] + colWidths[4] / 2, ty);
+
+      ctx.textAlign = "right";
+      ctx.font = `700 9px ${FONT_SANS}`;
+      ctx.fillText(
+        formatQuantity(it.quantidade, it.produtoUnidadeSnapshot),
+        colStarts[5] + colWidths[5] - 4,
+        ty
+      );
+
+      ctx.font = `400 9px ${FONT_SANS}`;
+      ctx.fillText(
+        formatCurrency(it.precoUnitario),
+        colStarts[6] + colWidths[6] - 4,
+        ty
+      );
+
+      ctx.font = `700 9px ${FONT_SANS}`;
+      ctx.fillText(
+        formatCurrency(it.subtotal),
+        colStarts[7] + colWidths[7] - 4,
+        ty
+      );
+
+      py += h;
+    });
+
+    if (p.observacoes && p.observacoes.trim()) {
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(x0, py, CONTENT_W, 20);
+      ctx.strokeStyle = "#cccccc";
+      ctx.strokeRect(x0, py, CONTENT_W, 20);
+
+      ctx.fillStyle = "#333333";
+      ctx.font = `400 8.5px ${FONT_SANS}`;
+      ctx.textAlign = "left";
+      ctx.fillText(`Obs: ${p.observacoes.trim()}`, x0 + 6, py + 13);
+    }
+
+    y += blockH;
+  });
+
+  // Caixa de Totais do Pacote (com destaque ao Peso Total)
+  const sumH = 50;
+  ctx.fillStyle = "#f5f5f5";
+  ctx.fillRect(x0, y, CONTENT_W, sumH);
+  ctx.strokeStyle = "#000000";
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(x0, y, CONTENT_W, sumH);
+
+  ctx.fillStyle = "#000000";
+  ctx.font = `800 11px ${FONT_SANS}`;
+  ctx.textAlign = "left";
+  ctx.fillText("RESUMO GERAL DO PACOTE", x0 + 10, y + 19);
+
+  ctx.font = `600 10px ${FONT_SANS}`;
+  ctx.fillStyle = "#333333";
+  ctx.fillText(
+    `Total de Pedidos: ${pacote.pedidos.length}   •   Valor Total Estimado: ${formatCurrency(pacote.totalGeralValor)}`,
+    x0 + 10,
+    y + 36
+  );
+
+  ctx.textAlign = "right";
+  if (pacote.totalGeralPesoKg > 0) {
+    ctx.font = `700 9px ${FONT_SANS}`;
+    ctx.fillStyle = "#222222";
+    ctx.fillText("PESO TOTAL CONSOLIDADO:", xRight - 10, y + 17);
+
+    ctx.font = `800 17px ${FONT_SANS}`;
+    ctx.fillStyle = "#000000";
+    ctx.fillText(
+      formatQuantity(pacote.totalGeralPesoKg, "kg"),
+      xRight - 10,
+      y + 38
+    );
+  } else {
+    ctx.font = `700 9.5px ${FONT_SANS}`;
+    ctx.fillStyle = "#222222";
+    ctx.fillText("TOTAL GERAL:", xRight - 10, y + 17);
+
+    ctx.font = `800 16px ${FONT_SANS}`;
+    ctx.fillStyle = "#000000";
+    ctx.fillText(formatCurrency(pacote.totalGeralValor), xRight - 10, y + 38);
+  }
+
+  y += sumH + 20;
+
+  // Rodapé
+  ctx.fillStyle = "#666666";
+  ctx.font = `400 9px ${FONT_SANS}`;
+  ctx.textAlign = "left";
+  ctx.fillText("Documento Consolidado de Pedidos • Sistema Marco", x0, y);
+  ctx.textAlign = "right";
+  ctx.fillText(`Emitido em ${new Date().toLocaleString("pt-BR")}`, xRight, y);
+
+  // Fatiamento A4
+  const pages: HTMLCanvasElement[] = [];
+  for (let p = 0; p < numPages; p++) {
+    const pageCanvas = document.createElement("canvas");
+    pageCanvas.width = PAGE_W * SCALE;
+    pageCanvas.height = PAGE_H * SCALE;
+    const pCtx = pageCanvas.getContext("2d");
+    if (!pCtx) continue;
+
+    pCtx.fillStyle = "#ffffff";
+    pCtx.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
+
+    const srcY = p * usablePageH * SCALE;
+    const sliceH = Math.min(
+      (usablePageH + MARGIN * 2) * SCALE,
+      masterCanvas.height - srcY
+    );
+
+    pCtx.drawImage(
+      masterCanvas,
+      0,
+      srcY,
+      PAGE_W * SCALE,
+      sliceH,
+      0,
+      0,
+      PAGE_W * SCALE,
+      sliceH
+    );
+
+    pages.push(pageCanvas);
+  }
+
+  return pages;
+}
+
+export async function gerarImagemPrintPacote(
+  pacote: PacotePedidosData
+): Promise<Blob> {
+  const pages = await renderizarPaginasA4PacoteCanvas(pacote);
+  const firstPage = pages[0] || document.createElement("canvas");
+
+  return new Promise<Blob>((resolve, reject) => {
+    firstPage.toBlob((blob) => {
+      if (blob) {
+        resolve(blob);
+      } else {
+        reject(new Error("Falha ao gerar imagem do pacote de pedidos."));
+      }
+    }, "image/png");
+  });
+}
+
+export async function gerarArquivoPdfPacote(
+  pacote: PacotePedidosData
+): Promise<Blob> {
+  const pageCanvases = await renderizarPaginasA4PacoteCanvas(pacote);
+  const A4_PT_W = 595.28;
+  const A4_PT_H = 841.89;
+
+  const encoder = new TextEncoder();
+  const chunks: BlobPart[] = [];
+  const offsets: number[] = [0];
+  let byteLength = 0;
+
+  const pushStr = (s: string) => {
+    const arr = encoder.encode(s);
+    chunks.push(arr as unknown as BlobPart);
+    byteLength += arr.byteLength;
+  };
+
+  const pushBytes = (arr: Uint8Array) => {
+    chunks.push(arr as unknown as BlobPart);
+    byteLength += arr.byteLength;
+  };
+
+  const startObj = (id: number) => {
+    offsets[id] = byteLength;
+    pushStr(`${id} 0 obj\n`);
+  };
+
+  const endObj = () => {
+    pushStr(`\nendobj\n`);
+  };
+
+  pushStr("%PDF-1.4\n%\xFF\xFF\xFF\xFF\n");
+
+  const numPages = pageCanvases.length;
+  const pageObjIds: number[] = [];
+
+  for (let i = 0; i < numPages; i++) {
+    pageObjIds.push(3 + i * 3);
+  }
+
+  startObj(1);
+  pushStr(`<< /Type /Catalog /Pages 2 0 R >>`);
+  endObj();
+
+  startObj(2);
+  pushStr(
+    `<< /Type /Pages /Kids [${pageObjIds
+      .map((id) => `${id} 0 R`)
+      .join(" ")}] /Count ${numPages} >>`
+  );
+  endObj();
+
+  for (let i = 0; i < numPages; i++) {
+    const canvas = pageCanvases[i];
+    const jpegBytes = dataUrlToUint8Array(
+      canvas.toDataURL("image/jpeg", 0.95)
+    );
+
+    const pageObjId = 3 + i * 3;
+    const contentObjId = 4 + i * 3;
+    const imageObjId = 5 + i * 3;
+    const imgName = `/Im${i + 1}`;
+
+    startObj(pageObjId);
+    pushStr(
+      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${A4_PT_W} ${A4_PT_H}] /Resources << /XObject << ${imgName} ${imageObjId} 0 R >> >> /Contents ${contentObjId} 0 R >>`
+    );
+    endObj();
+
+    const streamCmd = `q\n${A4_PT_W} 0 0 ${A4_PT_H} 0 0 cm\n${imgName} Do\nQ`;
+    const streamBytes = encoder.encode(streamCmd);
+    startObj(contentObjId);
+    pushStr(`<< /Length ${streamBytes.byteLength} >>\nstream\n`);
+    pushBytes(streamBytes);
+    pushStr(`\nendstream`);
+    endObj();
+
+    startObj(imageObjId);
+    pushStr(
+      `<< /Type /XObject /Subtype /Image /Width ${canvas.width} /Height ${canvas.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${jpegBytes.byteLength} >>\nstream\n`
+    );
+    pushBytes(jpegBytes);
+    pushStr(`\nendstream`);
+    endObj();
+  }
+
+  const totalObjs = 2 + numPages * 3;
+  const xrefOffset = byteLength;
+
+  pushStr(`xref\n0 ${totalObjs + 1}\n`);
+  pushStr(`0000000000 65535 f \n`);
+  for (let id = 1; id <= totalObjs; id++) {
+    const offStr = String(offsets[id] || 0).padStart(10, "0");
+    pushStr(`${offStr} 00000 n \n`);
+  }
+
+  pushStr(
+    `trailer\n<< /Size ${totalObjs + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`
+  );
+
+  return new Blob(chunks, { type: "application/pdf" });
+}
