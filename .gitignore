@@ -43,9 +43,12 @@ next-env.d.ts
 
 # arquivos de importação de dados
 importacao/*
-*.db
 deploy.tar.gz
+
 # SQLite databases
 *.db
+*.db-journal
+*.db-wal
+*.db-shm
 *.sqlite
 *.sqlite3
