@@ -31,9 +31,9 @@ else
   echo "🔄 2/7 Código já atualizado pelo CI; pulando git pull."
 fi
 
-# 3. Instala dependências de forma determinística e sincroniza schema do Prisma
-echo "📦 3/7 Instalando pacotes (npm ci) e sincronizando schema do banco..."
-npm ci
+# 3. Instala dependências e sincroniza schema do Prisma
+echo "📦 3/7 Instalando pacotes e sincronizando schema do banco..."
+npm install --no-audit --no-fund
 npx prisma generate
 npx prisma db push
 
