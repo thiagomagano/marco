@@ -5,6 +5,20 @@ APP_DIR="${APP_DIR:-/var/www/marco}"
 HEALTHCHECK_URL="${HEALTHCHECK_URL:-http://127.0.0.1:3013}"
 cd "$APP_DIR"
 
+# Garante node/npm no PATH em sessões SSH não-interativas (nvm, volta, /usr/local/bin, snap)
+export PATH="/usr/local/bin:/snap/bin:$HOME/.local/bin:$HOME/.volta/bin:$PATH"
+if [ -s "$HOME/.nvm/nvm.sh" ]; then
+  set +u
+  # shellcheck source=/dev/null
+  source "$HOME/.nvm/nvm.sh"
+  set -u
+elif [ -s "/usr/local/nvm/nvm.sh" ]; then
+  set +u
+  # shellcheck source=/dev/null
+  source "/usr/local/nvm/nvm.sh"
+  set -u
+fi
+
 echo "===================================================="
 echo "🚀 Iniciando atualização de produção (Marco Pedidos)"
 echo "===================================================="
