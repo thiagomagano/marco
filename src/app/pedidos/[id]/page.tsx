@@ -23,6 +23,7 @@ import {
   X,
 } from "lucide-react";
 import { formatCurrency, formatQuantity } from "@/lib/money.ts";
+import { formatInscricaoEstadual } from "@/lib/inscricao-estadual.ts";
 import {
   gerarImagemPrintPedido,
   gerarNomeArquivoPrint,
@@ -64,6 +65,8 @@ interface PedidoDetalhes {
     razaoSocialOuNome: string;
     nomeFantasia: string | null;
     cnpj: string | null;
+    inscricaoEstadual?: string | null;
+    prazoPagamentoBoleto?: string | null;
     telefone: string | null;
     endereco: string | null;
     bairro: string | null;
@@ -589,6 +592,19 @@ export default function DetalhesPedidoPage({
             )}
             {pedido.cliente.cnpj && (
               <div className="text-slate-500">CNPJ: {pedido.cliente.cnpj}</div>
+            )}
+            {pedido.cliente.inscricaoEstadual && (
+              <div className="text-slate-500">
+                IE: {formatInscricaoEstadual(pedido.cliente.inscricaoEstadual)}
+              </div>
+            )}
+            {pedido.cliente.prazoPagamentoBoleto && (
+              <div className="text-slate-500">
+                <span className="font-semibold text-slate-700">
+                  Prazo Boleto:{" "}
+                </span>
+                {pedido.cliente.prazoPagamentoBoleto}
+              </div>
             )}
             {(() => {
               const partesEndereco = [
