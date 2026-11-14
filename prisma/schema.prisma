@@ -54,26 +54,28 @@ model Produto {
 }
 
 model Cliente {
-  id                String    @id @default(cuid())
-  razaoSocialOuNome String
-  nomeFantasia      String?
-  cnpj              String?
-  cnpjNormalized    String?   @unique
-  telefone          String?
-  email             String?
-  endereco          String?
-  bairro            String?
-  cidade            String?
-  cep               String?
-  observacoes       String?
-  ativo             Boolean   @default(true)
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  id                   String    @id @default(cuid())
+  razaoSocialOuNome    String
+  nomeFantasia         String?
+  cnpj                 String?
+  cnpjNormalized       String?   @unique
+  inscricaoEstadual    String?
+  prazoPagamentoBoleto String?   @default("14 dias")
+  telefone             String?
+  email                String?
+  endereco             String?
+  bairro               String?
+  cidade               String?
+  cep                  String?
+  observacoes          String?
+  ativo                Boolean   @default(true)
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
 
-  vendedorId        String?
-  vendedor          Vendedor? @relation(fields: [vendedorId], references: [id])
+  vendedorId           String?
+  vendedor             Vendedor? @relation(fields: [vendedorId], references: [id])
 
-  pedidos           Pedido[]
+  pedidos              Pedido[]
 
   @@index([vendedorId])
 }

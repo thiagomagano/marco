@@ -1,4 +1,5 @@
 import { formatCurrency, formatQuantity } from "./money.ts";
+import { formatInscricaoEstadual } from "./inscricao-estadual.ts";
 
 export interface PedidoShareItem {
   id?: string;
@@ -31,6 +32,8 @@ export interface PedidoShareData {
     razaoSocialOuNome: string;
     nomeFantasia: string | null;
     cnpj: string | null;
+    inscricaoEstadual?: string | null;
+    prazoPagamentoBoleto?: string | null;
     telefone: string | null;
     endereco: string | null;
     bairro: string | null;
@@ -91,6 +94,12 @@ export function gerarTextoResumoWhatsApp(pedido: PedidoShareData): string {
   }
   if (pedido.cliente.cnpj) {
     linhas.push(`CNPJ Cliente: ${pedido.cliente.cnpj}`);
+  }
+  if (pedido.cliente.inscricaoEstadual) {
+    linhas.push(`IE Cliente: ${formatInscricaoEstadual(pedido.cliente.inscricaoEstadual)}`);
+  }
+  if (pedido.cliente.prazoPagamentoBoleto) {
+    linhas.push(`Prazo Boleto: ${pedido.cliente.prazoPagamentoBoleto}`);
   }
   const enderecoCompleto = formatarEnderecoCliente(pedido.cliente);
   if (enderecoCompleto) {
@@ -261,6 +270,8 @@ export async function gerarImagemPrintPedido(
     clienteNomeLines.length * 18 +
     clienteRazaoLines.length * 16 +
     (pedido.cliente.cnpj ? 17 : 0) +
+    (pedido.cliente.inscricaoEstadual ? 17 : 0) +
+    (pedido.cliente.prazoPagamentoBoleto ? 17 : 0) +
     (pedido.cliente.telefone ? 17 : 0) +
     clienteEndLines.length * 16;
 
@@ -528,6 +539,22 @@ export async function gerarImagemPrintPedido(
   ctx.fillStyle = "#64748b";
   if (pedido.cliente.cnpj) {
     ctx.fillText(`CNPJ: ${pedido.cliente.cnpj}`, col2X, c2Y);
+    c2Y += 17;
+  }
+  if (pedido.cliente.inscricaoEstadual) {
+    ctx.fillText(
+      `IE: ${formatInscricaoEstadual(pedido.cliente.inscricaoEstadual)}`,
+      col2X,
+      c2Y
+    );
+    c2Y += 17;
+  }
+  if (pedido.cliente.prazoPagamentoBoleto) {
+    ctx.fillText(
+      `Prazo Boleto: ${pedido.cliente.prazoPagamentoBoleto}`,
+      col2X,
+      c2Y
+    );
     c2Y += 17;
   }
   if (pedido.cliente.telefone) {
@@ -1100,6 +1127,20 @@ export function gerarHtmlImpressaoA4(pedido: PedidoShareData): string {
               : ""
           }
           ${
+            pedido.cliente.inscricaoEstadual
+              ? `<div class="party-detail">IE: ${escapeHtml(
+                  formatInscricaoEstadual(pedido.cliente.inscricaoEstadual)
+                )}</div>`
+              : ""
+          }
+          ${
+            pedido.cliente.prazoPagamentoBoleto
+              ? `<div class="party-detail"><strong>Prazo Boleto:</strong> ${escapeHtml(
+                  pedido.cliente.prazoPagamentoBoleto
+                )}</div>`
+              : ""
+          }
+          ${
             pedido.cliente.telefone
               ? `<div class="party-detail">Tel: ${escapeHtml(
                   pedido.cliente.telefone
@@ -1279,6 +1320,8 @@ export async function renderizarPaginasA4Canvas(
     cliNomeLines.length * 15 +
     cliRazaoLines.length * 14 +
     (pedido.cliente.cnpj ? 15 : 0) +
+    (pedido.cliente.inscricaoEstadual ? 15 : 0) +
+    (pedido.cliente.prazoPagamentoBoleto ? 15 : 0) +
     (pedido.cliente.telefone ? 15 : 0) +
     cliEndLines.length * 14;
   const p3H =
@@ -1461,6 +1504,22 @@ export async function renderizarPaginasA4Canvas(
   }
   if (pedido.cliente.cnpj) {
     ctx.fillText(`CNPJ: ${pedido.cliente.cnpj}`, col2X + 8, py2);
+    py2 += 15;
+  }
+  if (pedido.cliente.inscricaoEstadual) {
+    ctx.fillText(
+      `IE: ${formatInscricaoEstadual(pedido.cliente.inscricaoEstadual)}`,
+      col2X + 8,
+      py2
+    );
+    py2 += 15;
+  }
+  if (pedido.cliente.prazoPagamentoBoleto) {
+    ctx.fillText(
+      `Prazo Boleto: ${pedido.cliente.prazoPagamentoBoleto}`,
+      col2X + 8,
+      py2
+    );
     py2 += 15;
   }
   if (pedido.cliente.telefone) {
@@ -1954,6 +2013,12 @@ export function gerarTextoWhatsAppPacote(pacote: PacotePedidosData): string {
     if (p.cliente.cnpj) {
       linhas.push(`*CNPJ:* ${p.cliente.cnpj}`);
     }
+    if (p.cliente.inscricaoEstadual) {
+      linhas.push(`*IE:* ${formatInscricaoEstadual(p.cliente.inscricaoEstadual)}`);
+    }
+    if (p.cliente.prazoPagamentoBoleto) {
+      linhas.push(`*Prazo Boleto:* ${p.cliente.prazoPagamentoBoleto}`);
+    }
     if (p.cliente.cidade) {
       linhas.push(`*Cidade:* ${p.cliente.cidade}`);
     }
@@ -2060,6 +2125,20 @@ export function gerarHtmlImpressaoA4Pacote(pacote: PacotePedidosData): string {
           </div>
           <div class="client-meta-row">
             <div><span class="info-label">CNPJ:</span> ${escapeHtml(p.cliente.cnpj || "-")}</div>
+            ${
+              p.cliente.inscricaoEstadual
+                ? `<div><span class="info-label">IE:</span> ${escapeHtml(
+                    formatInscricaoEstadual(p.cliente.inscricaoEstadual)
+                  )}</div>`
+                : ""
+            }
+            ${
+              p.cliente.prazoPagamentoBoleto
+                ? `<div><span class="info-label">Prazo Boleto:</span> ${escapeHtml(
+                    p.cliente.prazoPagamentoBoleto
+                  )}</div>`
+                : ""
+            }
             <div><span class="info-label">Cidade:</span> ${escapeHtml(p.cliente.cidade || "-")}</div>
             <div><span class="info-label">Vendedor:</span> ${escapeHtml(p.vendedor?.nome || "-")}</div>
           </div>

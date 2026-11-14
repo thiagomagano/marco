@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db.ts";
 import { requireAuth } from "@/lib/session.ts";
 import { isValidCnpj, normalizeCnpj, formatCnpj } from "@/lib/cnpj.ts";
+import { parseInscricaoEstadualInput } from "@/lib/inscricao-estadual.ts";
+import { normalizePrazoPagamentoBoleto } from "@/lib/prazo-pagamento.ts";
 
 export async function PATCH(
   request: Request,
@@ -46,6 +48,24 @@ export async function PATCH(
       }
     }
 
+    let inscricaoEstadualAtualizada = cliente.inscricaoEstadual;
+    if (body.inscricaoEstadual !== undefined) {
+      const ieParsed = parseInscricaoEstadualInput(body.inscricaoEstadual);
+      if (!ieParsed.valid) {
+        return NextResponse.json({ error: ieParsed.error }, { status: 400 });
+      }
+      inscricaoEstadualAtualizada = ieParsed.normalized;
+    }
+
+    let prazoAtualizado = cliente.prazoPagamentoBoleto;
+    if (body.prazoPagamentoBoleto !== undefined) {
+      const prazoParsed = normalizePrazoPagamentoBoleto(body.prazoPagamentoBoleto);
+      if (!prazoParsed.valid) {
+        return NextResponse.json({ error: prazoParsed.error }, { status: 400 });
+      }
+      prazoAtualizado = prazoParsed.value;
+    }
+
     let vendedorIdAtualizado = cliente.vendedorId;
     if (body.vendedorId !== undefined) {
       if (body.vendedorId && body.vendedorId.trim()) {
@@ -67,6 +87,8 @@ export async function PATCH(
         nomeFantasia: body.nomeFantasia !== undefined ? body.nomeFantasia?.trim() || null : cliente.nomeFantasia,
         cnpj: formattedCnpj,
         cnpjNormalized: normalizedCnpj,
+        inscricaoEstadual: inscricaoEstadualAtualizada,
+        prazoPagamentoBoleto: prazoAtualizado,
         vendedorId: vendedorIdAtualizado,
         telefone: body.telefone !== undefined ? body.telefone?.trim() || null : cliente.telefone,
         email: body.email !== undefined ? body.email?.trim() || null : cliente.email,
