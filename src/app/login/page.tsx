@@ -2,7 +2,9 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Lock, User, AlertCircle, CheckCircle2 } from "lucide-react";
+import { Lock, User, AlertCircle } from "lucide-react";
+import { BrandLogo } from "@/components/layout/BrandLogo.tsx";
+import { BRAND_NAME } from "@/lib/brand.ts";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -42,11 +44,11 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-slate-50 px-4 sm:px-6 lg:px-8">
       <div className="max-w-md w-full space-y-8 bg-white p-8 rounded-2xl shadow-sm border border-slate-200">
         <div>
-          <div className="mx-auto w-12 h-12 bg-blue-600 text-white rounded-xl flex items-center justify-center font-bold text-2xl shadow-sm">
-            M
+          <div className="flex justify-center">
+            <BrandLogo className="h-16 w-auto max-w-[220px] object-contain rounded-xl shadow-xs" />
           </div>
           <h2 className="mt-4 text-center text-2xl font-bold text-slate-900 tracking-tight">
-            Marco Comercial
+            {BRAND_NAME}
           </h2>
           <p className="mt-1 text-center text-sm text-slate-500">
             Sistema de Registro de Pedidos Comerciais (MVP)

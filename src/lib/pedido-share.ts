@@ -1,5 +1,12 @@
 import { formatCurrency, formatQuantity } from "./money.ts";
 import { formatInscricaoEstadual } from "./inscricao-estadual.ts";
+import {
+  BRAND_LOGO_FALLBACK_PATH,
+  BRAND_LOGO_PATH,
+  BRAND_NAME,
+  BRAND_SUBTITLE,
+  getBrandLogoUrl,
+} from "./brand.ts";
 
 export interface PedidoShareItem {
   id?: string;
@@ -202,6 +209,244 @@ function drawRoundedRect(
   ctx.closePath();
 }
 
+function loadImageWithTimeout(src: string, timeoutMs = 4000): Promise<HTMLImageElement | null> {
+  if (typeof window === "undefined" || typeof Image === "undefined") {
+    return Promise.resolve(null);
+  }
+
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    let settled = false;
+
+    const finish = (result: HTMLImageElement | null) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(result);
+    };
+
+    const timer = setTimeout(() => finish(null), timeoutMs);
+    img.onload = () => finish(img.naturalWidth > 0 ? img : null);
+    img.onerror = () => finish(null);
+    img.src = src;
+  });
+}
+
+async function loadBrandLogoImage(): Promise<HTMLImageElement | null> {
+  const primary = await loadImageWithTimeout(BRAND_LOGO_PATH);
+  if (primary) return primary;
+  return loadImageWithTimeout(BRAND_LOGO_FALLBACK_PATH);
+}
+
+function drawLogoContained(
+  ctx: CanvasRenderingContext2D,
+  logo: HTMLImageElement | null,
+  boxX: number,
+  boxY: number,
+  maxW: number,
+  maxH: number,
+  radius = 6
+): { width: number; height: number } {
+  if (!logo || !logo.naturalWidth || !logo.naturalHeight) {
+    return { width: 0, height: 0 };
+  }
+
+  const ratio = logo.naturalWidth / logo.naturalHeight;
+  let drawW = maxW;
+  let drawH = drawW / ratio;
+  if (drawH > maxH) {
+    drawH = maxH;
+    drawW = drawH * ratio;
+  }
+
+  const drawX = boxX;
+  const drawY = boxY + (maxH - drawH) / 2;
+
+  ctx.save();
+  drawRoundedRect(ctx, drawX, drawY, drawW, drawH, radius);
+  ctx.clip();
+  ctx.drawImage(logo, drawX, drawY, drawW, drawH);
+  ctx.restore();
+
+  return { width: drawW, height: drawH };
+}
+
+function drawCanvasLetterhead(
+  ctx: CanvasRenderingContext2D,
+  logo: HTMLImageElement | null,
+  opts: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    padX: number;
+    fontFamily: string;
+    docTitle: string;
+    docRef: string;
+    docDate: string;
+    borderColor?: string;
+    outerBorder?: boolean;
+  }
+) {
+  const {
+    x,
+    y,
+    width,
+    height,
+    padX,
+    fontFamily,
+    docTitle,
+    docRef,
+    docDate,
+    borderColor = "#0f172a",
+    outerBorder = true,
+  } = opts;
+
+  ctx.save();
+
+  // Faixa clara timbrada no topo para máximo contraste com a logo e o texto
+  ctx.fillStyle = "#f8fafc";
+  ctx.fillRect(x, y, width, height);
+
+  if (outerBorder) {
+    ctx.strokeStyle = borderColor;
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(x, y, width, height);
+  }
+
+  // Barra inferior forte típica de cabeçalho timbrado comercial
+  ctx.fillStyle = borderColor;
+  ctx.fillRect(x, y + height - 3, width, 3);
+
+  // Logo em destaque à esquerda (100% visível)
+  const logoMaxH = height - 18;
+  const logoMaxW = 136;
+  const drawn = drawLogoContained(
+    ctx,
+    logo,
+    x + padX,
+    y + 8,
+    logoMaxW,
+    logoMaxH,
+    6
+  );
+
+  // Nome da marca e subtítulo ao lado da logo
+  const brandX = x + padX + (drawn.width > 0 ? drawn.width + 14 : 0);
+  ctx.textAlign = "left";
+  ctx.fillStyle = "#0f172a";
+  ctx.font = `800 15px ${fontFamily}`;
+  ctx.fillText(BRAND_NAME.toUpperCase(), brandX, y + height * 0.44);
+
+  ctx.fillStyle = "#475569";
+  ctx.font = `600 10.5px ${fontFamily}`;
+  ctx.fillText(BRAND_SUBTITLE, brandX, y + height * 0.68);
+
+  // Identificação do documento à direita
+  const rightX = x + width - padX;
+  ctx.textAlign = "right";
+  ctx.fillStyle = "#334155";
+  ctx.font = `800 9.5px ${fontFamily}`;
+  ctx.fillText(docTitle.toUpperCase(), rightX, y + height * 0.32);
+
+  ctx.fillStyle = "#000000";
+  ctx.font = `800 13px ${fontFamily}`;
+  ctx.fillText(docRef, rightX, y + height * 0.57);
+
+  ctx.fillStyle = "#475569";
+  ctx.font = `400 9.5px ${fontFamily}`;
+  ctx.fillText(docDate, rightX, y + height * 0.78);
+
+  ctx.restore();
+}
+
+function getPrintableLetterheadHtml(
+  docType: string,
+  docRef: string,
+  docDate: string
+): string {
+  const origin =
+    typeof window !== "undefined" && window.location?.origin
+      ? window.location.origin
+      : "";
+  const primaryUrl = escapeHtml(getBrandLogoUrl(origin));
+  const fallbackUrl = escapeHtml(
+    `${origin ? origin.replace(/\/+$/, "") : ""}${BRAND_LOGO_FALLBACK_PATH}`
+  );
+
+  return `<header class="letterhead">
+      <div class="letterhead-brand">
+        <img class="letterhead-logo" src="${primaryUrl}" alt="${escapeHtml(
+    BRAND_NAME
+  )}" onerror="if(!this.dataset.fb){this.dataset.fb='1';this.src='${fallbackUrl}';}else{this.style.display='none';}" />
+        <div>
+          <div class="letterhead-company">${escapeHtml(BRAND_NAME.toUpperCase())}</div>
+          <div class="letterhead-subtitle">${escapeHtml(BRAND_SUBTITLE)}</div>
+        </div>
+      </div>
+      <div class="letterhead-doc">
+        <div class="letterhead-doc-type">${escapeHtml(docType)}</div>
+        <div class="letterhead-doc-ref">${escapeHtml(docRef)}</div>
+        <div class="letterhead-doc-date">${escapeHtml(docDate)}</div>
+      </div>
+    </header>`;
+}
+
+function imprimirHtmlEmPapel(html: string): void {
+  const iframe = document.createElement("iframe");
+  iframe.style.position = "fixed";
+  iframe.style.right = "0";
+  iframe.style.bottom = "0";
+  iframe.style.width = "0";
+  iframe.style.height = "0";
+  iframe.style.border = "0";
+  document.body.appendChild(iframe);
+
+  const doc = iframe.contentWindow?.document;
+  if (!doc || !iframe.contentWindow) {
+    document.body.removeChild(iframe);
+    throw new Error("Não foi possível inicializar a janela de impressão.");
+  }
+
+  doc.open();
+  doc.write(html);
+  doc.close();
+
+  let printed = false;
+  const triggerPrint = () => {
+    if (printed) return;
+    printed = true;
+    iframe.contentWindow?.focus();
+    iframe.contentWindow?.print();
+    setTimeout(() => {
+      if (document.body.contains(iframe)) {
+        document.body.removeChild(iframe);
+      }
+    }, 2000);
+  };
+
+  const imgs = Array.from(doc.images || []);
+  const pendingImgs = imgs.filter((img) => !img.complete);
+  if (pendingImgs.length === 0) {
+    setTimeout(triggerPrint, 250);
+    return;
+  }
+
+  let remaining = pendingImgs.length;
+  const onSettled = () => {
+    remaining -= 1;
+    if (remaining <= 0) {
+      setTimeout(triggerPrint, 120);
+    }
+  };
+  for (const img of pendingImgs) {
+    img.addEventListener("load", onSettled, { once: true });
+    img.addEventListener("error", onSettled, { once: true });
+  }
+  setTimeout(triggerPrint, 1500);
+}
+
 /**
  * Gera uma imagem PNG de alta definição (2x DPI) com o resumo completo do pedido,
  * ideal para compartilhar via WhatsApp Web/Desktop (Ctrl+V) ou aplicativo móvel.
@@ -228,6 +473,8 @@ export async function gerarImagemPrintPedido(
   if (!mCtx) {
     throw new Error("Contexto Canvas 2D indisponível neste navegador.");
   }
+
+  const brandLogo = await loadBrandLogoImage();
 
   // 1. Medir linhas da seção de partes comerciais (3 colunas)
   const colGap = 24;
@@ -326,12 +573,14 @@ export async function gerarImagemPrintPedido(
       ? Math.max(64, 38 + cancelLines.length * 16 + 16)
       : 0;
 
+  const letterheadH = 82;
   const headerSectionH = 104;
   const tableHeaderAreaH = 44 + 36; // Título "Itens do Pedido" + cabeçalho da tabela
   const tableFooterH = 46;
   const cardBottomPad = 44; // Rodapé com data de geração
 
   const CARD_H =
+    letterheadH +
     cancelBannerH +
     headerSectionH +
     commercialSectionH +
@@ -376,6 +625,22 @@ export async function gerarImagemPrintPedido(
   ctx.clip();
 
   let cursorY = OUTER_PAD;
+
+  // Cabeçalho institucional timbrado com logo em destaque
+  drawCanvasLetterhead(ctx, brandLogo, {
+    x: CARD_X,
+    y: cursorY,
+    width: CARD_W,
+    height: letterheadH,
+    padX: INNER_PAD,
+    fontFamily: FONT_FAMILY,
+    docTitle: "Pedido Comercial",
+    docRef: pedido.numero,
+    docDate: `Emissão: ${new Date().toLocaleDateString("pt-BR")}`,
+    borderColor: "#1e293b",
+    outerBorder: false,
+  });
+  cursorY += letterheadH;
 
   // Banner de Cancelamento (se CANCELADO)
   if (pedido.status === "CANCELADO") {
@@ -905,6 +1170,65 @@ export function gerarHtmlImpressaoA4(pedido: PedidoShareData): string {
       max-width: 186mm;
       margin: 0 auto;
     }
+    .letterhead {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      padding: 10px 14px;
+      border: 1.5px solid #000000;
+      border-bottom: 3px solid #000000;
+      background: #f8fafc;
+      margin-bottom: 10px;
+    }
+    .letterhead-brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .letterhead-logo {
+      height: 54px;
+      width: auto;
+      max-width: 145px;
+      object-fit: contain;
+      border-radius: 6px;
+      display: block;
+    }
+    .letterhead-company {
+      font-size: 15px;
+      font-weight: 800;
+      letter-spacing: 0.4px;
+      color: #0f172a;
+      text-transform: uppercase;
+      line-height: 1.15;
+    }
+    .letterhead-subtitle {
+      font-size: 10px;
+      font-weight: 600;
+      color: #475569;
+      margin-top: 2px;
+    }
+    .letterhead-doc {
+      text-align: right;
+    }
+    .letterhead-doc-type {
+      font-size: 9.5px;
+      font-weight: 800;
+      letter-spacing: 0.6px;
+      text-transform: uppercase;
+      color: #1e293b;
+    }
+    .letterhead-doc-ref {
+      font-size: 14px;
+      font-weight: 800;
+      color: #000000;
+      margin-top: 2px;
+    }
+    .letterhead-doc-date {
+      font-size: 9.5px;
+      color: #475569;
+      margin-top: 2px;
+    }
     .header-box {
       border: 1.5px solid #000000;
       padding: 10px 14px;
@@ -1042,6 +1366,11 @@ export function gerarHtmlImpressaoA4(pedido: PedidoShareData): string {
 </head>
 <body>
   <div class="page">
+    ${getPrintableLetterheadHtml(
+      "Pedido Comercial de Representação",
+      pedido.numero,
+      `Emitido em ${dataEmissaoPdf}`
+    )}
     ${bannerCanceladoHtml}
 
     <div class="header-box">
@@ -1221,35 +1550,7 @@ export function gerarHtmlImpressaoA4(pedido: PedidoShareData): string {
  * Abre a caixa de diálogo de impressão nativa do navegador com o layout A4 pronto para papel.
  */
 export function imprimirPedidoEmPapel(pedido: PedidoShareData): void {
-  const html = gerarHtmlImpressaoA4(pedido);
-  const iframe = document.createElement("iframe");
-  iframe.style.position = "fixed";
-  iframe.style.right = "0";
-  iframe.style.bottom = "0";
-  iframe.style.width = "0";
-  iframe.style.height = "0";
-  iframe.style.border = "0";
-  document.body.appendChild(iframe);
-
-  const doc = iframe.contentWindow?.document;
-  if (!doc || !iframe.contentWindow) {
-    document.body.removeChild(iframe);
-    throw new Error("Não foi possível inicializar a janela de impressão.");
-  }
-
-  doc.open();
-  doc.write(html);
-  doc.close();
-
-  setTimeout(() => {
-    iframe.contentWindow?.focus();
-    iframe.contentWindow?.print();
-    setTimeout(() => {
-      if (document.body.contains(iframe)) {
-        document.body.removeChild(iframe);
-      }
-    }, 2000);
-  }, 250);
+  imprimirHtmlEmPapel(gerarHtmlImpressaoA4(pedido));
 }
 
 /**
@@ -1273,6 +1574,8 @@ export async function renderizarPaginasA4Canvas(
   if (!mCtx) {
     throw new Error("Contexto Canvas 2D indisponível.");
   }
+
+  const brandLogo = await loadBrandLogoImage();
 
   // Desenha todo o conteúdo em um canvas mestre de largura A4 e altura dinâmica,
   // e depois fatia em páginas A4 exatas caso ultrapasse 1 página.
@@ -1343,9 +1646,12 @@ export async function renderizarPaginasA4Canvas(
       : [];
   const obsBoxH = obsLines.length > 0 ? 30 + obsLines.length * 15 + 10 : 0;
 
+  const letterheadH = 72;
   const totalLogicalH =
     MARGIN * 2 +
-    86 + // Header
+    letterheadH +
+    10 +
+    82 + // Header
     12 +
     partiesBoxH +
     14 +
@@ -1377,6 +1683,22 @@ export async function renderizarPaginasA4Canvas(
   let y = MARGIN;
   const x0 = MARGIN;
   const xRight = MARGIN + CONTENT_W;
+
+  // 0. Cabeçalho Institucional Timbrado com Logo em Destaque
+  drawCanvasLetterhead(ctx, brandLogo, {
+    x: x0,
+    y,
+    width: CONTENT_W,
+    height: letterheadH,
+    padX: 12,
+    fontFamily: FONT_SANS,
+    docTitle: "Pedido Comercial de Representação",
+    docRef: pedido.numero,
+    docDate: `Emitido em ${new Date().toLocaleDateString("pt-BR")}`,
+    borderColor: "#000000",
+    outerBorder: true,
+  });
+  y += letterheadH + 10;
 
   // 1. Cabeçalho Formal com Borda Preta
   const headerH = 82;
@@ -2184,6 +2506,65 @@ export function gerarHtmlImpressaoA4Pacote(pacote: PacotePedidosData): string {
       max-width: 186mm;
       margin: 0 auto;
     }
+    .letterhead {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      padding: 10px 14px;
+      border: 1.5px solid #000000;
+      border-bottom: 3px solid #000000;
+      background: #f8fafc;
+      margin-bottom: 10px;
+    }
+    .letterhead-brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .letterhead-logo {
+      height: 54px;
+      width: auto;
+      max-width: 145px;
+      object-fit: contain;
+      border-radius: 6px;
+      display: block;
+    }
+    .letterhead-company {
+      font-size: 15px;
+      font-weight: 800;
+      letter-spacing: 0.4px;
+      color: #0f172a;
+      text-transform: uppercase;
+      line-height: 1.15;
+    }
+    .letterhead-subtitle {
+      font-size: 10px;
+      font-weight: 600;
+      color: #475569;
+      margin-top: 2px;
+    }
+    .letterhead-doc {
+      text-align: right;
+    }
+    .letterhead-doc-type {
+      font-size: 9.5px;
+      font-weight: 800;
+      letter-spacing: 0.6px;
+      text-transform: uppercase;
+      color: #1e293b;
+    }
+    .letterhead-doc-ref {
+      font-size: 14px;
+      font-weight: 800;
+      color: #000000;
+      margin-top: 2px;
+    }
+    .letterhead-doc-date {
+      font-size: 9.5px;
+      color: #475569;
+      margin-top: 2px;
+    }
     .main-header {
       border: 1.5px solid #000000;
       padding: 10px 14px;
@@ -2356,6 +2737,11 @@ export function gerarHtmlImpressaoA4Pacote(pacote: PacotePedidosData): string {
 </head>
 <body>
   <div class="page">
+    ${getPrintableLetterheadHtml(
+      "Resumo de Pedidos • Pacote Consolidado",
+      pacote.frigorificoNome,
+      `Gerado em ${dataGeracaoStr}`
+    )}
     <div class="main-header">
       <div>
         <div class="main-title">Pacote de Pedidos &bull; ${escapeHtml(
@@ -2422,35 +2808,7 @@ export function gerarHtmlImpressaoA4Pacote(pacote: PacotePedidosData): string {
 }
 
 export function imprimirPacoteEmPapel(pacote: PacotePedidosData): void {
-  const html = gerarHtmlImpressaoA4Pacote(pacote);
-  const iframe = document.createElement("iframe");
-  iframe.style.position = "fixed";
-  iframe.style.right = "0";
-  iframe.style.bottom = "0";
-  iframe.style.width = "0";
-  iframe.style.height = "0";
-  iframe.style.border = "0";
-  document.body.appendChild(iframe);
-
-  const doc = iframe.contentWindow?.document;
-  if (!doc || !iframe.contentWindow) {
-    document.body.removeChild(iframe);
-    throw new Error("Não foi possível inicializar a janela de impressão.");
-  }
-
-  doc.open();
-  doc.write(html);
-  doc.close();
-
-  setTimeout(() => {
-    iframe.contentWindow?.focus();
-    iframe.contentWindow?.print();
-    setTimeout(() => {
-      if (document.body.contains(iframe)) {
-        document.body.removeChild(iframe);
-      }
-    }, 2000);
-  }, 250);
+  imprimirHtmlEmPapel(gerarHtmlImpressaoA4Pacote(pacote));
 }
 
 
@@ -2472,8 +2830,11 @@ export async function renderizarPaginasA4PacoteCanvas(
     throw new Error("Contexto Canvas 2D indisponível.");
   }
 
+  const brandLogo = await loadBrandLogoImage();
+
   // Medição da altura dinâmica necessária
-  let dynamicHeight = MARGIN * 2 + 86 + 24; // Header e margens
+  const letterheadH = 72;
+  let dynamicHeight = MARGIN * 2 + letterheadH + 10 + 74 + 14; // Cabeçalho timbrado + header do pacote e margens
 
   const PROD_COL_W = 230;
   const CLIENT_NAME_MAX_W = CONTENT_W - 72;
@@ -2533,6 +2894,22 @@ export async function renderizarPaginasA4PacoteCanvas(
   let y = MARGIN;
   const x0 = MARGIN;
   const xRight = MARGIN + CONTENT_W;
+
+  // 0. Cabeçalho Institucional Timbrado com Logo em Destaque
+  drawCanvasLetterhead(ctx, brandLogo, {
+    x: x0,
+    y,
+    width: CONTENT_W,
+    height: letterheadH,
+    padX: 12,
+    fontFamily: FONT_SANS,
+    docTitle: "Resumo de Pedidos • Pacote Consolidado",
+    docRef: pacote.frigorificoNome.toUpperCase(),
+    docDate: `Gerado em ${new Date(pacote.dataGeracao).toLocaleString("pt-BR")}`,
+    borderColor: "#000000",
+    outerBorder: true,
+  });
+  y += letterheadH + 10;
 
   // Header do Pacote
   const headerH = 74;
@@ -2643,8 +3020,6 @@ export async function renderizarPaginasA4PacoteCanvas(
 
     // Faixa 2: Caixa separada com dados do Cliente (Nome, CNPJ, Cidade, Vendedor)
     let py = y + pHeaderH;
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(x0, py, CONTENT_W, clientBoxH);
     ctx.strokeStyle = "#000000";
     ctx.lineWidth = 1;
     ctx.strokeRect(x0, py, CONTENT_W, clientBoxH);
@@ -2784,8 +3159,6 @@ export async function renderizarPaginasA4PacoteCanvas(
     });
 
     if (p.observacoes && p.observacoes.trim()) {
-      ctx.fillStyle = "#ffffff";
-      ctx.fillRect(x0, py, CONTENT_W, 20);
       ctx.strokeStyle = "#cccccc";
       ctx.strokeRect(x0, py, CONTENT_W, 20);
 

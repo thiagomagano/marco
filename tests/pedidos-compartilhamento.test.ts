@@ -1,5 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { BRAND_LOGO_PATH, BRAND_NAME } from "../src/lib/brand.ts";
 import {
   gerarNomeArquivoPrint,
   gerarNomeArquivoPdf,
@@ -138,6 +139,10 @@ describe("Compartilhamento, Print e PDF A4 Imprimível de Pedido", () => {
     assert(html.includes("Valor Total: R$"));
     assert(html.includes("PESO INFORMADO:"));
     assert(html.includes("Valor Total Estimado:"));
+    assert(html.includes('class="letterhead"'));
+    assert(html.includes('class="letterhead-logo"'));
+    assert(html.includes(BRAND_NAME.toUpperCase()));
+    assert(html.includes(BRAND_LOGO_PATH));
   });
 
   it("deve manter o valor total em destaque no documento A4 quando não houver peso informado", () => {

@@ -1,5 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { BRAND_LOGO_PATH, BRAND_NAME } from "../src/lib/brand.ts";
 import {
   compilarDadosPacote,
   gerarTextoWhatsAppPacote,
@@ -148,6 +149,10 @@ describe("Pacote e Agrupamento de Pedidos em Resumo Único", () => {
     assert(html.includes("Paulínia - SP"));
     assert(html.includes("Resumo Geral Consolidado"));
     assert(html.includes("Total de Pedidos: <strong>2</strong>"));
+    assert(html.includes('class="letterhead"'));
+    assert(html.includes('class="letterhead-logo"'));
+    assert(html.includes(BRAND_NAME.toUpperCase()));
+    assert(html.includes(BRAND_LOGO_PATH));
   });
 
   it("deve gerar nome de arquivo padronizado para pacote", () => {

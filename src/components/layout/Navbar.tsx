@@ -17,6 +17,8 @@ import {
   X,
   LayoutDashboard,
 } from "lucide-react";
+import { BrandLogo } from "@/components/layout/BrandLogo.tsx";
+import { BRAND_NAME, BRAND_SUBTITLE } from "@/lib/brand.ts";
 
 export function Navbar({ operadorNome }: { operadorNome?: string }) {
   const pathname = usePathname();
@@ -65,14 +67,16 @@ export function Navbar({ operadorNome }: { operadorNome?: string }) {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
           {/* Logo / Título */}
-          <div className="flex items-center gap-3">
-            <Link href="/" className="flex items-center gap-2 group">
-              <div className="w-9 h-9 rounded-lg bg-blue-600 text-white flex items-center justify-center font-bold text-lg shadow-sm group-hover:bg-blue-700 transition">
-                M
-              </div>
-              <div>
-                <span className="font-bold text-slate-900 text-base leading-tight block">Marco Comercial</span>
-                <span className="text-xs text-slate-500 block">Representação de Carnes</span>
+          <div className="flex items-center gap-3 shrink-0">
+            <Link href="/" className="flex items-center gap-2.5 group">
+              <BrandLogo className="h-9 w-auto max-w-[120px] object-contain rounded-lg shadow-xs shrink-0 transition group-hover:opacity-90" />
+              <div className="min-w-0">
+                <span className="font-bold text-slate-900 text-base leading-tight block whitespace-nowrap">
+                  {BRAND_NAME}
+                </span>
+                <span className="text-xs text-slate-500 block whitespace-nowrap">
+                  {BRAND_SUBTITLE}
+                </span>
               </div>
             </Link>
           </div>
@@ -86,7 +90,7 @@ export function Navbar({ operadorNome }: { operadorNome?: string }) {
                 <Link
                   key={link.href}
                   href={link.href}
-                  className={`flex items-center gap-1.5 px-3 py-2 rounded-md text-sm font-medium transition ${
+                  className={`flex items-center gap-1.5 px-2.5 xl:px-3 py-2 rounded-md text-sm font-medium whitespace-nowrap transition ${
                     link.highlight
                       ? "bg-blue-600 text-white hover:bg-blue-700 shadow-xs"
                       : isActive
