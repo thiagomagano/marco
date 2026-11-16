@@ -951,7 +951,7 @@ export default function DetalhesPedidoPage({
             <div className="flex items-center justify-between pt-1 shrink-0 text-[11px] text-slate-400">
               <span>
                 {modoVisualizacao === "A4"
-                  ? "Modo Folha A4: diagramação P&B com bordas nítidas e espaço para assinatura de conferência no papel."
+                  ? "Modo Folha A4: diagramação P&B com bordas nítidas pronta para impressão e compartilhamento."
                   : "Modo Print WhatsApp: clique em 'Copiar Print' e pressione Ctrl+V direto na conversa."}
               </span>
               <button
