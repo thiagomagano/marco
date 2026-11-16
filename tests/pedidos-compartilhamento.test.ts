@@ -115,7 +115,7 @@ describe("Compartilhamento, Print e PDF A4 Imprimível de Pedido", () => {
     assert(texto.includes("*Observações:* Entregar pela manhã no portão 2."));
   });
 
-  it("deve gerar o documento HTML de impressão em papel A4 com estrutura completa e assinaturas", () => {
+  it("deve gerar o documento HTML de impressão em papel A4 sem assinaturas e com peso em destaque", () => {
     const html = gerarHtmlImpressaoA4(pedidoExemplo);
 
     assert(html.includes("@page"));
@@ -130,6 +130,26 @@ describe("Compartilhamento, Print e PDF A4 Imprimível de Pedido", () => {
     assert(html.includes("Lombo Suíno Temperado"));
     assert(html.includes("saco 15kg"));
     assert(html.includes("Entregar pela manhã no portão 2."));
-    assert(html.includes("Conferência / Cliente"));
+    assert(!html.includes("Conferência / Cliente"));
+    assert(!html.includes("Vendedor / Representação"));
+    assert(!html.includes('class="signatures"'));
+    assert(html.includes("Peso Informado do Pedido"));
+    assert(html.includes("120,5 kg"));
+    assert(html.includes("Valor Total: R$"));
+    assert(html.includes("PESO INFORMADO:"));
+    assert(html.includes("Valor Total Estimado:"));
+  });
+
+  it("deve manter o valor total em destaque no documento A4 quando não houver peso informado", () => {
+    const pedidoSemPeso: PedidoShareData = {
+      ...pedidoExemplo,
+      pesoInformadoKg: null,
+    };
+    const html = gerarHtmlImpressaoA4(pedidoSemPeso);
+
+    assert(html.includes("Total Estimado do Pedido"));
+    assert(html.includes("TOTAL ESTIMADO:"));
+    assert(!html.includes("Peso Informado do Pedido"));
+    assert(!html.includes("PESO INFORMADO:"));
   });
 });
