@@ -74,7 +74,7 @@ export default function LoginPage() {
                 required
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                placeholder="Ex: operador"
+                placeholder="Digite seu usuário"
                 className="w-full pl-10 pr-4 py-2.5 text-sm bg-white border border-slate-300 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition"
               />
             </div>
@@ -106,12 +106,6 @@ export default function LoginPage() {
           >
             {loading ? "Entrando..." : "Acessar Sistema"}
           </button>
-
-          <div className="pt-2 text-xs text-center text-slate-500 bg-slate-50 p-3 rounded-lg border border-slate-200">
-            <span className="font-medium text-slate-700">Acesso padrão de teste:</span>
-            <br />
-            Usuário: <code className="text-blue-600 font-semibold">operador</code> | Senha: <code className="text-blue-600 font-semibold">admin123</code>
-          </div>
         </form>
       </div>
     </div>
