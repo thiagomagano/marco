@@ -1,4 +1,5 @@
 import { formatCurrency, formatQuantity } from "./money.ts";
+import { formatInscricaoEstadual } from "./inscricao-estadual.ts";
 
 export interface PedidoShareItem {
   id?: string;
@@ -31,6 +32,8 @@ export interface PedidoShareData {
     razaoSocialOuNome: string;
     nomeFantasia: string | null;
     cnpj: string | null;
+    inscricaoEstadual?: string | null;
+    prazoPagamentoBoleto?: string | null;
     telefone: string | null;
     endereco: string | null;
     bairro: string | null;
@@ -91,6 +94,12 @@ export function gerarTextoResumoWhatsApp(pedido: PedidoShareData): string {
   }
   if (pedido.cliente.cnpj) {
     linhas.push(`CNPJ Cliente: ${pedido.cliente.cnpj}`);
+  }
+  if (pedido.cliente.inscricaoEstadual) {
+    linhas.push(`IE Cliente: ${formatInscricaoEstadual(pedido.cliente.inscricaoEstadual)}`);
+  }
+  if (pedido.cliente.prazoPagamentoBoleto) {
+    linhas.push(`Prazo Boleto: ${pedido.cliente.prazoPagamentoBoleto}`);
   }
   const enderecoCompleto = formatarEnderecoCliente(pedido.cliente);
   if (enderecoCompleto) {
@@ -261,6 +270,8 @@ export async function gerarImagemPrintPedido(
     clienteNomeLines.length * 18 +
     clienteRazaoLines.length * 16 +
     (pedido.cliente.cnpj ? 17 : 0) +
+    (pedido.cliente.inscricaoEstadual ? 17 : 0) +
+    (pedido.cliente.prazoPagamentoBoleto ? 17 : 0) +
     (pedido.cliente.telefone ? 17 : 0) +
     clienteEndLines.length * 16;
 
@@ -528,6 +539,22 @@ export async function gerarImagemPrintPedido(
   ctx.fillStyle = "#64748b";
   if (pedido.cliente.cnpj) {
     ctx.fillText(`CNPJ: ${pedido.cliente.cnpj}`, col2X, c2Y);
+    c2Y += 17;
+  }
+  if (pedido.cliente.inscricaoEstadual) {
+    ctx.fillText(
+      `IE: ${formatInscricaoEstadual(pedido.cliente.inscricaoEstadual)}`,
+      col2X,
+      c2Y
+    );
+    c2Y += 17;
+  }
+  if (pedido.cliente.prazoPagamentoBoleto) {
+    ctx.fillText(
+      `Prazo Boleto: ${pedido.cliente.prazoPagamentoBoleto}`,
+      col2X,
+      c2Y
+    );
     c2Y += 17;
   }
   if (pedido.cliente.telefone) {
@@ -800,6 +827,9 @@ export function gerarHtmlImpressaoA4(pedido: PedidoShareData): string {
     pedido.cliente.nomeFantasia !== pedido.cliente.razaoSocialOuNome;
   const enderecoCompleto = formatarEnderecoCliente(pedido.cliente);
 
+  const temPesoInformado = Boolean(
+    pedido.pesoInformadoKg && Number(pedido.pesoInformadoKg) > 0
+  );
   const dataCriacaoStr = new Date(pedido.dataCriacao).toLocaleString("pt-BR");
   const dataConfirmacaoStr = pedido.dataConfirmacao
     ? new Date(pedido.dataConfirmacao).toLocaleString("pt-BR")
@@ -999,20 +1029,6 @@ export function gerarHtmlImpressaoA4(pedido: PedidoShareData): string {
       white-space: pre-wrap;
       font-size: 10.5px;
     }
-    .signatures {
-      margin-top: 26px;
-      display: flex;
-      justify-content: space-between;
-      gap: 24px;
-      page-break-inside: avoid;
-    }
-    .sig-block {
-      flex: 1;
-      border-top: 1px solid #000000;
-      padding-top: 4px;
-      text-align: center;
-      font-size: 10px;
-    }
     .footer-meta {
       margin-top: 16px;
       border-top: 1px dashed #666666;
@@ -1046,16 +1062,19 @@ export function gerarHtmlImpressaoA4(pedido: PedidoShareData): string {
       </div>
 
       <div class="header-totals">
-        <div class="total-label">Total Estimado do Pedido</div>
-        <div class="total-value">${escapeHtml(
-          formatCurrency(pedido.totalEstimado)
-        )}</div>
         ${
-          pedido.pesoInformadoKg
-            ? `<div class="weight-value">Peso Informado: ${escapeHtml(
-                formatQuantity(pedido.pesoInformadoKg, "kg")
-              )}</div>`
-            : ""
+          temPesoInformado
+            ? `<div class="total-label">Peso Informado do Pedido</div>
+               <div class="total-value">${escapeHtml(
+                 formatQuantity(pedido.pesoInformadoKg!, "kg")
+               )}</div>
+               <div class="weight-value">Valor Total: ${escapeHtml(
+                 formatCurrency(pedido.totalEstimado)
+               )}</div>`
+            : `<div class="total-label">Total Estimado do Pedido</div>
+               <div class="total-value">${escapeHtml(
+                 formatCurrency(pedido.totalEstimado)
+               )}</div>`
         }
       </div>
     </div>
@@ -1096,6 +1115,20 @@ export function gerarHtmlImpressaoA4(pedido: PedidoShareData): string {
             pedido.cliente.cnpj
               ? `<div class="party-detail">CNPJ: ${escapeHtml(
                   pedido.cliente.cnpj
+                )}</div>`
+              : ""
+          }
+          ${
+            pedido.cliente.inscricaoEstadual
+              ? `<div class="party-detail">IE: ${escapeHtml(
+                  formatInscricaoEstadual(pedido.cliente.inscricaoEstadual)
+                )}</div>`
+              : ""
+          }
+          ${
+            pedido.cliente.prazoPagamentoBoleto
+              ? `<div class="party-detail"><strong>Prazo Boleto:</strong> ${escapeHtml(
+                  pedido.cliente.prazoPagamentoBoleto
                 )}</div>`
               : ""
           }
@@ -1149,31 +1182,29 @@ export function gerarHtmlImpressaoA4(pedido: PedidoShareData): string {
           <td colspan="5">
             Total de Itens: ${pedido.itens.length}
             ${
-              pedido.pesoInformadoKg
-                ? ` &nbsp;|&nbsp; Peso Informado (kg): ${escapeHtml(
-                    formatQuantity(pedido.pesoInformadoKg, "kg")
+              temPesoInformado
+                ? ` &nbsp;|&nbsp; Valor Total Estimado: ${escapeHtml(
+                    formatCurrency(pedido.totalEstimado)
                   )}`
                 : ""
             }
           </td>
-          <td colspan="2" class="right">TOTAL ESTIMADO:</td>
-          <td class="right">${escapeHtml(
-            formatCurrency(pedido.totalEstimado)
-          )}</td>
+          ${
+            temPesoInformado
+              ? `<td colspan="2" class="right">PESO INFORMADO:</td>
+                 <td class="right">${escapeHtml(
+                   formatQuantity(pedido.pesoInformadoKg!, "kg")
+                 )}</td>`
+              : `<td colspan="2" class="right">TOTAL ESTIMADO:</td>
+                 <td class="right">${escapeHtml(
+                   formatCurrency(pedido.totalEstimado)
+                 )}</td>`
+          }
         </tr>
       </tfoot>
     </table>
 
     ${observacoesHtml}
-
-    <div class="signatures">
-      <div class="sig-block">
-        Vendedor / Representação (${escapeHtml(pedido.vendedor.nome)})
-      </div>
-      <div class="sig-block">
-        Conferência / Cliente (${escapeHtml(nomeCliente)})
-      </div>
-    </div>
 
     <div class="footer-meta">
       <span>Pedido ${escapeHtml(pedido.numero)} &bull; ${escapeHtml(
@@ -1279,6 +1310,8 @@ export async function renderizarPaginasA4Canvas(
     cliNomeLines.length * 15 +
     cliRazaoLines.length * 14 +
     (pedido.cliente.cnpj ? 15 : 0) +
+    (pedido.cliente.inscricaoEstadual ? 15 : 0) +
+    (pedido.cliente.prazoPagamentoBoleto ? 15 : 0) +
     (pedido.cliente.telefone ? 15 : 0) +
     cliEndLines.length * 14;
   const p3H =
@@ -1320,7 +1353,7 @@ export async function renderizarPaginasA4Canvas(
     totalItemsH +
     32 + // Table footer
     (obsBoxH > 0 ? 14 + obsBoxH : 0) +
-    90; // Assinaturas e rodapé
+    40; // Rodapé
 
   const usablePageH = PAGE_H - MARGIN * 2;
   const numPages = Math.max(
@@ -1381,23 +1414,40 @@ export async function renderizarPaginasA4Canvas(
     : "";
   ctx.fillText(`${dtCriacao}${dtConf}`, x0 + 12, y + 68);
 
-  // Total no Cabeçalho Direito
+  const temPesoInformado = Boolean(
+    pedido.pesoInformadoKg && Number(pedido.pesoInformadoKg) > 0
+  );
+
+  // Total no Cabeçalho Direito (peso em destaque quando informado)
   ctx.textAlign = "right";
-  ctx.fillStyle = "#222222";
-  ctx.font = `700 10px ${FONT_SANS}`;
-  ctx.fillText("TOTAL ESTIMADO DO PEDIDO", xRight - 12, y + 22);
+  if (temPesoInformado) {
+    ctx.fillStyle = "#222222";
+    ctx.font = `700 10px ${FONT_SANS}`;
+    ctx.fillText("PESO INFORMADO DO PEDIDO", xRight - 12, y + 21);
 
-  ctx.fillStyle = "#000000";
-  ctx.font = `800 19px ${FONT_SANS}`;
-  ctx.fillText(formatCurrency(pedido.totalEstimado), xRight - 12, y + 46);
+    ctx.fillStyle = "#000000";
+    ctx.font = `800 19px ${FONT_SANS}`;
+    ctx.fillText(
+      formatQuantity(pedido.pesoInformadoKg!, "kg"),
+      xRight - 12,
+      y + 45
+    );
 
-  if (pedido.pesoInformadoKg) {
+    ctx.fillStyle = "#333333";
     ctx.font = `700 10.5px ${FONT_SANS}`;
     ctx.fillText(
-      `Peso Informado: ${formatQuantity(pedido.pesoInformadoKg, "kg")}`,
+      `Valor Total: ${formatCurrency(pedido.totalEstimado)}`,
       xRight - 12,
-      y + 66
+      y + 65
     );
+  } else {
+    ctx.fillStyle = "#222222";
+    ctx.font = `700 10px ${FONT_SANS}`;
+    ctx.fillText("TOTAL ESTIMADO DO PEDIDO", xRight - 12, y + 22);
+
+    ctx.fillStyle = "#000000";
+    ctx.font = `800 19px ${FONT_SANS}`;
+    ctx.fillText(formatCurrency(pedido.totalEstimado), xRight - 12, y + 46);
   }
 
   y += headerH + 12;
@@ -1461,6 +1511,22 @@ export async function renderizarPaginasA4Canvas(
   }
   if (pedido.cliente.cnpj) {
     ctx.fillText(`CNPJ: ${pedido.cliente.cnpj}`, col2X + 8, py2);
+    py2 += 15;
+  }
+  if (pedido.cliente.inscricaoEstadual) {
+    ctx.fillText(
+      `IE: ${formatInscricaoEstadual(pedido.cliente.inscricaoEstadual)}`,
+      col2X + 8,
+      py2
+    );
+    py2 += 15;
+  }
+  if (pedido.cliente.prazoPagamentoBoleto) {
+    ctx.fillText(
+      `Prazo Boleto: ${pedido.cliente.prazoPagamentoBoleto}`,
+      col2X + 8,
+      py2
+    );
     py2 += 15;
   }
   if (pedido.cliente.telefone) {
@@ -1625,11 +1691,11 @@ export async function renderizarPaginasA4Canvas(
   ctx.fillStyle = "#000000";
   ctx.font = `700 10.5px ${FONT_SANS}`;
   ctx.textAlign = "left";
-  const pesoResumo = pedido.pesoInformadoKg
-    ? `   |   Peso Informado: ${formatQuantity(pedido.pesoInformadoKg, "kg")}`
+  const valorResumo = temPesoInformado
+    ? `   |   Valor Total Estimado: ${formatCurrency(pedido.totalEstimado)}`
     : "";
   ctx.fillText(
-    `Total de Itens: ${pedido.itens.length}${pesoResumo}`,
+    `Total de Itens: ${pedido.itens.length}${valorResumo}`,
     x0 + 8,
     y + 19
   );
@@ -1637,7 +1703,9 @@ export async function renderizarPaginasA4Canvas(
   ctx.textAlign = "right";
   ctx.font = `800 12px ${FONT_SANS}`;
   ctx.fillText(
-    `TOTAL ESTIMADO: ${formatCurrency(pedido.totalEstimado)}`,
+    temPesoInformado
+      ? `PESO INFORMADO: ${formatQuantity(pedido.pesoInformadoKg!, "kg")}`
+      : `TOTAL ESTIMADO: ${formatCurrency(pedido.totalEstimado)}`,
     xRight - 8,
     y + 19
   );
@@ -1664,34 +1732,8 @@ export async function renderizarPaginasA4Canvas(
     y += obsBoxH;
   }
 
-  // 5. Linhas de Assinatura / Conferência no Papel
-  y += 42;
-  const sigW = (CONTENT_W - 48) / 2;
-  ctx.strokeStyle = "#000000";
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(x0, y);
-  ctx.lineTo(x0 + sigW, y);
-  ctx.moveTo(x0 + sigW + 48, y);
-  ctx.lineTo(xRight, y);
-  ctx.stroke();
-
-  ctx.fillStyle = "#000000";
-  ctx.font = `400 10px ${FONT_SANS}`;
-  ctx.textAlign = "center";
-  ctx.fillText(
-    `Vendedor / Representação (${pedido.vendedor.nome})`,
-    x0 + sigW / 2,
-    y + 15
-  );
-  ctx.fillText(
-    `Conferência / Cliente (${nomeCliente})`,
-    x0 + sigW + 48 + sigW / 2,
-    y + 15
-  );
-
   // Rodapé de Data/Hora
-  y += 32;
+  y += 22;
   ctx.fillStyle = "#444444";
   ctx.font = `400 9.5px ${FONT_SANS}`;
   ctx.textAlign = "left";
@@ -1954,6 +1996,12 @@ export function gerarTextoWhatsAppPacote(pacote: PacotePedidosData): string {
     if (p.cliente.cnpj) {
       linhas.push(`*CNPJ:* ${p.cliente.cnpj}`);
     }
+    if (p.cliente.inscricaoEstadual) {
+      linhas.push(`*IE:* ${formatInscricaoEstadual(p.cliente.inscricaoEstadual)}`);
+    }
+    if (p.cliente.prazoPagamentoBoleto) {
+      linhas.push(`*Prazo Boleto:* ${p.cliente.prazoPagamentoBoleto}`);
+    }
     if (p.cliente.cidade) {
       linhas.push(`*Cidade:* ${p.cliente.cidade}`);
     }
@@ -2060,6 +2108,20 @@ export function gerarHtmlImpressaoA4Pacote(pacote: PacotePedidosData): string {
           </div>
           <div class="client-meta-row">
             <div><span class="info-label">CNPJ:</span> ${escapeHtml(p.cliente.cnpj || "-")}</div>
+            ${
+              p.cliente.inscricaoEstadual
+                ? `<div><span class="info-label">IE:</span> ${escapeHtml(
+                    formatInscricaoEstadual(p.cliente.inscricaoEstadual)
+                  )}</div>`
+                : ""
+            }
+            ${
+              p.cliente.prazoPagamentoBoleto
+                ? `<div><span class="info-label">Prazo Boleto:</span> ${escapeHtml(
+                    p.cliente.prazoPagamentoBoleto
+                  )}</div>`
+                : ""
+            }
             <div><span class="info-label">Cidade:</span> ${escapeHtml(p.cliente.cidade || "-")}</div>
             <div><span class="info-label">Vendedor:</span> ${escapeHtml(p.vendedor?.nome || "-")}</div>
           </div>

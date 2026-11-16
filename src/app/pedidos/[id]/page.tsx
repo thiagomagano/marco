@@ -23,6 +23,7 @@ import {
   X,
 } from "lucide-react";
 import { formatCurrency, formatQuantity } from "@/lib/money.ts";
+import { formatInscricaoEstadual } from "@/lib/inscricao-estadual.ts";
 import {
   gerarImagemPrintPedido,
   gerarNomeArquivoPrint,
@@ -64,6 +65,8 @@ interface PedidoDetalhes {
     razaoSocialOuNome: string;
     nomeFantasia: string | null;
     cnpj: string | null;
+    inscricaoEstadual?: string | null;
+    prazoPagamentoBoleto?: string | null;
     telefone: string | null;
     endereco: string | null;
     bairro: string | null;
@@ -590,6 +593,19 @@ export default function DetalhesPedidoPage({
             {pedido.cliente.cnpj && (
               <div className="text-slate-500">CNPJ: {pedido.cliente.cnpj}</div>
             )}
+            {pedido.cliente.inscricaoEstadual && (
+              <div className="text-slate-500">
+                IE: {formatInscricaoEstadual(pedido.cliente.inscricaoEstadual)}
+              </div>
+            )}
+            {pedido.cliente.prazoPagamentoBoleto && (
+              <div className="text-slate-500">
+                <span className="font-semibold text-slate-700">
+                  Prazo Boleto:{" "}
+                </span>
+                {pedido.cliente.prazoPagamentoBoleto}
+              </div>
+            )}
             {(() => {
               const partesEndereco = [
                 pedido.cliente.endereco,
@@ -935,7 +951,7 @@ export default function DetalhesPedidoPage({
             <div className="flex items-center justify-between pt-1 shrink-0 text-[11px] text-slate-400">
               <span>
                 {modoVisualizacao === "A4"
-                  ? "Modo Folha A4: diagramação P&B com bordas nítidas e espaço para assinatura de conferência no papel."
+                  ? "Modo Folha A4: diagramação P&B com bordas nítidas pronta para impressão e compartilhamento."
                   : "Modo Print WhatsApp: clique em 'Copiar Print' e pressione Ctrl+V direto na conversa."}
               </span>
               <button

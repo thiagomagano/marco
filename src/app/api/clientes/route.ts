@@ -2,6 +2,14 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db.ts";
 import { requireAuth } from "@/lib/session.ts";
 import { isValidCnpj, normalizeCnpj, formatCnpj } from "@/lib/cnpj.ts";
+import {
+  normalizeInscricaoEstadual,
+  parseInscricaoEstadualInput,
+} from "@/lib/inscricao-estadual.ts";
+import {
+  normalizePrazoPagamentoBoleto,
+  PRAZO_PAGAMENTO_DEFAULT,
+} from "@/lib/prazo-pagamento.ts";
 
 export async function GET(request: Request) {
   try {
@@ -20,6 +28,12 @@ export async function GET(request: Request) {
         { razaoSocialOuNome: { contains: busca } },
         { nomeFantasia: { contains: busca } },
         { cnpjNormalized: { contains: normalizeCnpj(busca) || busca } },
+        {
+          inscricaoEstadual: {
+            contains: normalizeInscricaoEstadual(busca) || busca,
+          },
+        },
+        { prazoPagamentoBoleto: { contains: busca } },
         { cidade: { contains: busca } },
         { bairro: { contains: busca } },
       ];
@@ -55,6 +69,8 @@ export async function POST(request: Request) {
       razaoSocialOuNome,
       nomeFantasia,
       cnpj,
+      inscricaoEstadual,
+      prazoPagamentoBoleto,
       vendedorId,
       telefone,
       email,
@@ -119,6 +135,19 @@ export async function POST(request: Request) {
       }
     }
 
+    const ieParsed = parseInscricaoEstadualInput(inscricaoEstadual);
+    if (!ieParsed.valid) {
+      return NextResponse.json({ error: ieParsed.error }, { status: 400 });
+    }
+
+    const prazoParsed =
+      prazoPagamentoBoleto === undefined
+        ? { valid: true, value: PRAZO_PAGAMENTO_DEFAULT }
+        : normalizePrazoPagamentoBoleto(prazoPagamentoBoleto);
+    if (!prazoParsed.valid) {
+      return NextResponse.json({ error: prazoParsed.error }, { status: 400 });
+    }
+
     // Aviso de possível duplicidade por nome quando sem CNPJ
     const nomeLimpo = razaoSocialOuNome.trim();
     const similar = await prisma.cliente.findFirst({
@@ -135,6 +164,8 @@ export async function POST(request: Request) {
         nomeFantasia: nomeFantasia?.trim() || null,
         cnpj: formattedCnpj,
         cnpjNormalized: normalizedCnpj,
+        inscricaoEstadual: ieParsed.normalized,
+        prazoPagamentoBoleto: prazoParsed.value,
         vendedorId: vendedorId.trim(),
         telefone: telefone?.trim() || null,
         email: email?.trim() || null,

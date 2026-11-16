@@ -8,6 +8,11 @@ import {
   cleanSpreadsheetPrice,
   normalizeKey,
 } from "../lib/excel-utils.ts";
+import { parseInscricaoEstadualInput } from "../lib/inscricao-estadual.ts";
+import {
+  normalizePrazoPagamentoBoleto,
+  PRAZO_PAGAMENTO_DEFAULT,
+} from "../lib/prazo-pagamento.ts";
 
 interface ImportStats {
   total: number;
@@ -65,6 +70,13 @@ async function importarClientes(filePath: string, isDryRun: boolean) {
     ).trim();
 
     const rawCnpj = row["cnpj"] || row["documento"] || row["cpfcnpj"] || "";
+    const rawIe = row["inscricaoestadual"] ?? row["ie"] ?? "";
+    const rawPrazo =
+      row["prazopagamentoboleto"] ??
+      row["prazoboleto"] ??
+      row["prazopagamento"] ??
+      row["prazo"] ??
+      "";
     const rawVendedor = String(
       row["vendedor"] || row["representante"] || row["responsavel"] || ""
     ).trim();
@@ -138,6 +150,33 @@ async function importarClientes(filePath: string, isDryRun: boolean) {
       cnpjsProcessados.add(cnpjInfo.normalized);
     }
 
+    // Validação 5: Inscrição Estadual (opcional)
+    const ieInfo = parseInscricaoEstadualInput(rawIe);
+    if (!ieInfo.valid) {
+      stats.erros++;
+      stats.detalhesErros.push({
+        linha: linhaNum,
+        identificador: razaoSocial,
+        motivo: ieInfo.error || "Inscrição Estadual inválida.",
+      });
+      continue;
+    }
+
+    // Validação 6: Prazo de pagamento no boleto (opcional; default 14 dias na criação)
+    const prazoInformado = String(rawPrazo).trim() !== "";
+    const prazoInfo = prazoInformado
+      ? normalizePrazoPagamentoBoleto(rawPrazo)
+      : { valid: true, value: PRAZO_PAGAMENTO_DEFAULT };
+    if (!prazoInfo.valid) {
+      stats.erros++;
+      stats.detalhesErros.push({
+        linha: linhaNum,
+        identificador: razaoSocial,
+        motivo: prazoInfo.error || "Prazo de pagamento no boleto inválido.",
+      });
+      continue;
+    }
+
     stats.validos++;
 
     // Se estiver em modo dry-run, apenas contabiliza
@@ -159,6 +198,10 @@ async function importarClientes(filePath: string, isDryRun: boolean) {
               razaoSocialOuNome: razaoSocial,
               nomeFantasia: nomeFantasia || clienteExistente.nomeFantasia,
               cnpj: cnpjInfo.formatted,
+              inscricaoEstadual: ieInfo.normalized || clienteExistente.inscricaoEstadual,
+              prazoPagamentoBoleto: prazoInformado
+                ? prazoInfo.value
+                : clienteExistente.prazoPagamentoBoleto,
               vendedorId: vendedorId,
               telefone: telefone || clienteExistente.telefone,
               email: email || clienteExistente.email,
@@ -177,6 +220,8 @@ async function importarClientes(filePath: string, isDryRun: boolean) {
               nomeFantasia: nomeFantasia || null,
               cnpj: cnpjInfo.formatted,
               cnpjNormalized: cnpjInfo.normalized,
+              inscricaoEstadual: ieInfo.normalized,
+              prazoPagamentoBoleto: prazoInfo.value,
               vendedorId: vendedorId,
               telefone: telefone || null,
               email: email || null,
@@ -201,6 +246,10 @@ async function importarClientes(filePath: string, isDryRun: boolean) {
             where: { id: clienteExistente.id },
             data: {
               nomeFantasia: nomeFantasia || clienteExistente.nomeFantasia,
+              inscricaoEstadual: ieInfo.normalized || clienteExistente.inscricaoEstadual,
+              prazoPagamentoBoleto: prazoInformado
+                ? prazoInfo.value
+                : clienteExistente.prazoPagamentoBoleto,
               vendedorId: vendedorId,
               telefone: telefone || clienteExistente.telefone,
               email: email || clienteExistente.email,
@@ -217,6 +266,8 @@ async function importarClientes(filePath: string, isDryRun: boolean) {
             data: {
               razaoSocialOuNome: razaoSocial,
               nomeFantasia: nomeFantasia || null,
+              inscricaoEstadual: ieInfo.normalized,
+              prazoPagamentoBoleto: prazoInfo.value,
               vendedorId: vendedorId,
               telefone: telefone || null,
               email: email || null,

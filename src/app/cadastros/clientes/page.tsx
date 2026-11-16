@@ -14,6 +14,11 @@ import {
   Trash2,
 } from "lucide-react";
 import { formatCnpj } from "@/lib/cnpj.ts";
+import { formatInscricaoEstadual } from "@/lib/inscricao-estadual.ts";
+import {
+  PRAZO_PAGAMENTO_DEFAULT,
+  PRAZOS_PAGAMENTO_SUGESTOES,
+} from "@/lib/prazo-pagamento.ts";
 
 interface Vendedor {
   id: string;
@@ -26,6 +31,8 @@ interface Cliente {
   nomeFantasia: string | null;
   cnpj: string | null;
   cnpjNormalized: string | null;
+  inscricaoEstadual: string | null;
+  prazoPagamentoBoleto: string | null;
   vendedorId: string | null;
   vendedor: {
     id: string;
@@ -57,6 +64,10 @@ export default function ClientesPage() {
   const [razaoSocialOuNome, setRazaoSocialOuNome] = useState("");
   const [nomeFantasia, setNomeFantasia] = useState("");
   const [cnpj, setCnpj] = useState("");
+  const [inscricaoEstadual, setInscricaoEstadual] = useState("");
+  const [prazoPagamentoBoleto, setPrazoPagamentoBoleto] = useState(
+    PRAZO_PAGAMENTO_DEFAULT
+  );
   const [vendedorId, setVendedorId] = useState("");
   const [telefone, setTelefone] = useState("");
   const [email, setEmail] = useState("");
@@ -117,6 +128,8 @@ export default function ClientesPage() {
     setRazaoSocialOuNome("");
     setNomeFantasia("");
     setCnpj("");
+    setInscricaoEstadual("");
+    setPrazoPagamentoBoleto(PRAZO_PAGAMENTO_DEFAULT);
     setVendedorId(filtroVendedorId || (vendedores[0]?.id || ""));
     setTelefone("");
     setEmail("");
@@ -136,6 +149,10 @@ export default function ClientesPage() {
     setRazaoSocialOuNome(c.razaoSocialOuNome);
     setNomeFantasia(c.nomeFantasia || "");
     setCnpj(c.cnpj || "");
+    setInscricaoEstadual(
+      c.inscricaoEstadual ? formatInscricaoEstadual(c.inscricaoEstadual) : ""
+    );
+    setPrazoPagamentoBoleto(c.prazoPagamentoBoleto || "");
     setVendedorId(c.vendedorId || "");
     setTelefone(c.telefone || "");
     setEmail(c.email || "");
@@ -167,6 +184,8 @@ export default function ClientesPage() {
           razaoSocialOuNome,
           nomeFantasia,
           cnpj,
+          inscricaoEstadual,
+          prazoPagamentoBoleto,
           vendedorId,
           telefone,
           email,
@@ -238,6 +257,11 @@ export default function ClientesPage() {
       c.razaoSocialOuNome.toLowerCase().includes(busca.toLowerCase()) ||
       (c.nomeFantasia && c.nomeFantasia.toLowerCase().includes(busca.toLowerCase())) ||
       (c.cnpj && c.cnpj.includes(busca)) ||
+      (c.inscricaoEstadual &&
+        (c.inscricaoEstadual.toLowerCase().includes(busca.toLowerCase()) ||
+          formatInscricaoEstadual(c.inscricaoEstadual).includes(busca))) ||
+      (c.prazoPagamentoBoleto &&
+        c.prazoPagamentoBoleto.toLowerCase().includes(busca.toLowerCase())) ||
       (c.vendedor?.nome && c.vendedor.nome.toLowerCase().includes(busca.toLowerCase())) ||
       (c.cidade && c.cidade.toLowerCase().includes(busca.toLowerCase())) ||
       (c.bairro && c.bairro.toLowerCase().includes(busca.toLowerCase()))
@@ -300,7 +324,7 @@ export default function ClientesPage() {
             <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
             <input
               type="text"
-              placeholder="Buscar por razão social, nome fantasia, CNPJ, vendedor, cidade ou bairro..."
+              placeholder="Buscar por razão social, nome fantasia, CNPJ, IE, prazo, vendedor, cidade ou bairro..."
               value={busca}
               onChange={(e) => setBusca(e.target.value)}
               className="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-blue-500"
@@ -326,7 +350,8 @@ export default function ClientesPage() {
                   <th className="py-3 px-4">Nome Fantasia</th>
                   <th className="py-3 px-4">Vendedor Responsável</th>
                   <th className="py-3 px-4">Cidade / Bairro</th>
-                  <th className="py-3 px-4">CNPJ</th>
+                  <th className="py-3 px-4">CNPJ / IE</th>
+                  <th className="py-3 px-4">Prazo Boleto</th>
                   <th className="py-3 px-4">Telefone</th>
                   <th className="py-3 px-4">Pedidos Realizados</th>
                   <th className="py-3 px-4 text-center">Status</th>
@@ -369,10 +394,26 @@ export default function ClientesPage() {
                       )}
                     </td>
                     <td className="py-3 px-4 font-mono text-slate-600">
-                      {c.cnpj || (
-                        <span className="text-slate-400 font-sans italic text-[11px]">
-                          Sem CNPJ
+                      <div>
+                        {c.cnpj || (
+                          <span className="text-slate-400 font-sans italic text-[11px]">
+                            Sem CNPJ
+                          </span>
+                        )}
+                      </div>
+                      {c.inscricaoEstadual && (
+                        <div className="text-[11px] text-slate-500 mt-0.5">
+                          IE: {formatInscricaoEstadual(c.inscricaoEstadual)}
+                        </div>
+                      )}
+                    </td>
+                    <td className="py-3 px-4">
+                      {c.prazoPagamentoBoleto ? (
+                        <span className="inline-block px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 border border-slate-200 font-semibold text-[11px]">
+                          {c.prazoPagamentoBoleto}
                         </span>
+                      ) : (
+                        <span className="text-slate-400 italic text-[11px]">-</span>
                       )}
                     </td>
                     <td className="py-3 px-4 text-slate-600">
@@ -519,6 +560,62 @@ export default function ClientesPage() {
                     placeholder="(00) 00000-0000"
                     className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-blue-500"
                   />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    Inscrição Estadual (Opcional)
+                  </label>
+                  <input
+                    type="text"
+                    value={inscricaoEstadual}
+                    onChange={(e) => setInscricaoEstadual(e.target.value)}
+                    onBlur={() =>
+                      setInscricaoEstadual((prev) =>
+                        formatInscricaoEstadual(prev)
+                      )
+                    }
+                    placeholder="000/0000000 (RS) ou ISENTO"
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-blue-500 font-mono"
+                  />
+                  <span className="text-[10px] text-slate-400">
+                    Padrão: vazio • No RS possui 10 dígitos (Módulo 11)
+                  </span>
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    Prazo de Pagamento no Boleto (Opcional)
+                  </label>
+                  <input
+                    type="text"
+                    value={prazoPagamentoBoleto}
+                    onChange={(e) => setPrazoPagamentoBoleto(e.target.value)}
+                    placeholder="Ex: 14 dias, 7/14/21..."
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-blue-500"
+                  />
+                  <div className="flex flex-wrap gap-1 mt-1.5">
+                    {PRAZOS_PAGAMENTO_SUGESTOES.map((sugestao) => (
+                      <button
+                        key={sugestao}
+                        type="button"
+                        onClick={() => setPrazoPagamentoBoleto(sugestao)}
+                        className={`px-1.5 py-0.5 rounded-sm text-[10px] font-semibold border transition cursor-pointer ${
+                          prazoPagamentoBoleto.trim().toLowerCase() ===
+                          sugestao.toLowerCase()
+                            ? "bg-blue-50 text-blue-700 border-blue-300"
+                            : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
+                        }`}
+                      >
+                        {sugestao}
+                      </button>
+                    ))}
+                  </div>
+                  <span className="text-[10px] text-slate-400 block mt-0.5">
+                    Padrão: 14 dias (pode alterar ou deixar em branco)
+                  </span>
                 </div>
               </div>
 

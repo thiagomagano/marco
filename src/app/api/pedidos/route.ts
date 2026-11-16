@@ -86,6 +86,8 @@ export async function GET(request: Request) {
             razaoSocialOuNome: true,
             nomeFantasia: true,
             cnpj: true,
+            inscricaoEstadual: true,
+            prazoPagamentoBoleto: true,
             telefone: true,
             endereco: true,
             bairro: true,
