@@ -10,9 +10,16 @@ import {
   Trash2,
   ChevronLeft,
   ChevronRight,
+  RefreshCw,
+  CheckCircle2,
   X,
 } from "lucide-react";
-import { formatCnpj } from "@/lib/cnpj.ts";
+import { formatCnpj, isValidCnpj, normalizeCnpj } from "@/lib/cnpj.ts";
+import type { ConsultaCnpjResult } from "@/lib/brasilapi-cnpj.ts";
+import {
+  BrasilApiReviewModal,
+  type ClienteCamposForm,
+} from "@/components/clientes/BrasilApiReviewModal.tsx";
 import { formatInscricaoEstadual } from "@/lib/inscricao-estadual.ts";
 import {
   PRAZO_PAGAMENTO_DEFAULT,
@@ -86,6 +93,15 @@ export default function ClientesPage() {
   const [salvando, setSalvando] = useState(false);
   const [formErro, setFormErro] = useState<string | null>(null);
   const [formAviso, setFormAviso] = useState<string | null>(null);
+
+  // Consulta BrasilAPI (CNPJ)
+  const [consultandoCnpj, setConsultandoCnpj] = useState(false);
+  const [consultaErro, setConsultaErro] = useState<string | null>(null);
+  const [consultaAviso, setConsultaAviso] = useState<string | null>(null);
+  const [dadosBrasilApi, setDadosBrasilApi] = useState<ConsultaCnpjResult | null>(
+    null
+  );
+  const [reviewModalAberto, setReviewModalAberto] = useState(false);
 
   // Modal de exclusão
   const [clienteExcluir, setClienteExcluir] = useState<Cliente | null>(null);
@@ -178,6 +194,10 @@ export default function ClientesPage() {
     setAtivo(true);
     setFormErro(null);
     setFormAviso(null);
+    setConsultaErro(null);
+    setConsultaAviso(null);
+    setDadosBrasilApi(null);
+    setReviewModalAberto(false);
     setModalAberto(true);
   };
 
@@ -201,7 +221,80 @@ export default function ClientesPage() {
     setAtivo(c.ativo);
     setFormErro(null);
     setFormAviso(null);
+    setConsultaErro(null);
+    setConsultaAviso(null);
+    setDadosBrasilApi(null);
+    setReviewModalAberto(false);
     setModalAberto(true);
+  };
+
+  const consultarBrasilApi = async () => {
+    setConsultaErro(null);
+    setConsultaAviso(null);
+
+    const cnpjNormalizado = normalizeCnpj(cnpj);
+    if (!cnpjNormalizado || !isValidCnpj(cnpjNormalizado)) {
+      setConsultaErro(
+        "Informe um CNPJ válido com 14 dígitos para consultar na BrasilAPI."
+      );
+      return;
+    }
+
+    setConsultandoCnpj(true);
+    try {
+      const res = await fetch(
+        `/api/clientes/consulta-cnpj?cnpj=${encodeURIComponent(cnpjNormalizado)}`
+      );
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Erro ao consultar CNPJ na BrasilAPI.");
+      }
+
+      setDadosBrasilApi(data as ConsultaCnpjResult);
+      setReviewModalAberto(true);
+    } catch (err) {
+      setConsultaErro((err as Error).message);
+    } finally {
+      setConsultandoCnpj(false);
+    }
+  };
+
+  const aplicarDadosBrasilApi = (campos: Partial<ClienteCamposForm>) => {
+    if (campos.razaoSocialOuNome !== undefined) {
+      setRazaoSocialOuNome(campos.razaoSocialOuNome);
+    }
+    if (campos.nomeFantasia !== undefined) {
+      setNomeFantasia(campos.nomeFantasia);
+    }
+    if (campos.telefone !== undefined) {
+      setTelefone(campos.telefone);
+    }
+    if (campos.email !== undefined) {
+      setEmail(campos.email);
+    }
+    if (campos.cep !== undefined) {
+      setCep(campos.cep);
+    }
+    if (campos.endereco !== undefined) {
+      setEndereco(campos.endereco);
+    }
+    if (campos.bairro !== undefined) {
+      setBairro(campos.bairro);
+    }
+    if (campos.cidade !== undefined) {
+      setCidade(campos.cidade);
+    }
+
+    const cnpjNorm = normalizeCnpj(cnpj);
+    if (cnpjNorm && isValidCnpj(cnpjNorm)) {
+      setCnpj(formatCnpj(cnpjNorm));
+    }
+
+    setReviewModalAberto(false);
+    const qtd = Object.keys(campos).length;
+    setConsultaAviso(
+      `${qtd} campo(s) atualizado(s) no formulário com dados da Receita Federal. Revise e clique em "Salvar Cliente".`
+    );
   };
 
   const salvar = async (e: React.FormEvent) => {
@@ -700,21 +793,56 @@ export default function ClientesPage() {
                 </span>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">
-                    CNPJ (Opcional)
-                  </label>
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">
+                  CNPJ (Opcional)
+                </label>
+                <div className="flex flex-col sm:flex-row gap-2">
                   <input
                     type="text"
                     value={cnpj}
-                    onChange={(e) => setCnpj(e.target.value)}
+                    onChange={(e) => {
+                      setCnpj(e.target.value);
+                      if (consultaErro) setConsultaErro(null);
+                    }}
                     placeholder="00.000.000/0000-00"
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-blue-500 font-mono"
+                    className="flex-1 px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-blue-500 font-mono"
                   />
-                  <span className="text-[10px] text-slate-400">Quando informado, deve ser único</span>
+                  <button
+                    type="button"
+                    onClick={consultarBrasilApi}
+                    disabled={consultandoCnpj || !cnpj.trim()}
+                    title="Buscar dados cadastrais na Receita Federal via BrasilAPI"
+                    className="shrink-0 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-900 text-white transition disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                  >
+                    <RefreshCw
+                      className={`w-3.5 h-3.5 ${consultandoCnpj ? "animate-spin" : ""}`}
+                    />
+                    <span>
+                      {consultandoCnpj ? "Consultando..." : "Atualizar cadastro"}
+                    </span>
+                  </button>
                 </div>
+                <span className="text-[10px] text-slate-400">
+                  Quando informado, deve ser único • Use &quot;Atualizar cadastro&quot; para consultar via BrasilAPI
+                </span>
 
+                {consultaErro && (
+                  <div className="mt-2 bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded-lg text-xs flex items-start gap-1.5">
+                    <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                    <span>{consultaErro}</span>
+                  </div>
+                )}
+
+                {consultaAviso && (
+                  <div className="mt-2 bg-emerald-50 border border-emerald-200 text-emerald-700 px-3 py-2 rounded-lg text-xs flex items-start gap-1.5">
+                    <CheckCircle2 className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                    <span>{consultaAviso}</span>
+                  </div>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block font-semibold text-slate-700 mb-1">
                     Telefone
@@ -724,6 +852,19 @@ export default function ClientesPage() {
                     value={telefone}
                     onChange={(e) => setTelefone(e.target.value)}
                     placeholder="(00) 00000-0000"
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    E-mail
+                  </label>
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="compras@cliente.com"
                     className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
@@ -854,19 +995,6 @@ export default function ClientesPage() {
 
               <div>
                 <label className="block font-semibold text-slate-700 mb-1">
-                  E-mail
-                </label>
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="compras@cliente.com"
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">
                   Observações
                 </label>
                 <textarea
@@ -964,6 +1092,23 @@ export default function ClientesPage() {
           </div>
         </div>
       )}
+
+      <BrasilApiReviewModal
+        open={reviewModalAberto}
+        onClose={() => setReviewModalAberto(false)}
+        dados={dadosBrasilApi}
+        valoresAtuais={{
+          razaoSocialOuNome,
+          nomeFantasia,
+          telefone,
+          email,
+          cep,
+          endereco,
+          bairro,
+          cidade,
+        }}
+        onAplicar={aplicarDadosBrasilApi}
+      />
     </div>
   );
 }
