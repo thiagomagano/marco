@@ -13,6 +13,7 @@ import {
   normalizePrazoPagamentoBoleto,
   PRAZO_PAGAMENTO_DEFAULT,
 } from "../lib/prazo-pagamento.ts";
+import { buildClienteBuscaTexto } from "../lib/cliente-search.ts";
 
 interface ImportStats {
   total: number;
@@ -192,24 +193,39 @@ async function importarClientes(filePath: string, isDryRun: boolean) {
         });
 
         if (clienteExistente) {
+          const fantasiaFinal = nomeFantasia || clienteExistente.nomeFantasia;
+          const ieFinal = ieInfo.normalized || clienteExistente.inscricaoEstadual;
+          const prazoFinal = prazoInformado
+            ? prazoInfo.value
+            : clienteExistente.prazoPagamentoBoleto;
+          const bairroFinal = bairro || clienteExistente.bairro;
+          const cidadeFinal = cidade || clienteExistente.cidade;
+
           await prisma.cliente.update({
             where: { id: clienteExistente.id },
             data: {
               razaoSocialOuNome: razaoSocial,
-              nomeFantasia: nomeFantasia || clienteExistente.nomeFantasia,
+              nomeFantasia: fantasiaFinal,
               cnpj: cnpjInfo.formatted,
-              inscricaoEstadual: ieInfo.normalized || clienteExistente.inscricaoEstadual,
-              prazoPagamentoBoleto: prazoInformado
-                ? prazoInfo.value
-                : clienteExistente.prazoPagamentoBoleto,
+              inscricaoEstadual: ieFinal,
+              prazoPagamentoBoleto: prazoFinal,
               vendedorId: vendedorId,
               telefone: telefone || clienteExistente.telefone,
               email: email || clienteExistente.email,
               endereco: endereco || clienteExistente.endereco,
-              bairro: bairro || clienteExistente.bairro,
-              cidade: cidade || clienteExistente.cidade,
+              bairro: bairroFinal,
+              cidade: cidadeFinal,
               cep: (cep || clienteExistente.cep) || null,
               observacoes: observacoes || clienteExistente.observacoes,
+              buscaTexto: buildClienteBuscaTexto({
+                razaoSocialOuNome: razaoSocial,
+                nomeFantasia: fantasiaFinal,
+                cnpjNormalized: cnpjInfo.normalized,
+                inscricaoEstadual: ieFinal,
+                prazoPagamentoBoleto: prazoFinal,
+                cidade: cidadeFinal,
+                bairro: bairroFinal,
+              }),
             },
           });
           stats.atualizados++;
@@ -230,6 +246,15 @@ async function importarClientes(filePath: string, isDryRun: boolean) {
               cidade: cidade || null,
               cep: cep || null,
               observacoes: observacoes || null,
+              buscaTexto: buildClienteBuscaTexto({
+                razaoSocialOuNome: razaoSocial,
+                nomeFantasia: nomeFantasia || null,
+                cnpjNormalized: cnpjInfo.normalized,
+                inscricaoEstadual: ieInfo.normalized,
+                prazoPagamentoBoleto: prazoInfo.value,
+                cidade: cidade || null,
+                bairro: bairro || null,
+              }),
               ativo: true,
             },
           });
@@ -242,22 +267,37 @@ async function importarClientes(filePath: string, isDryRun: boolean) {
         });
 
         if (clienteExistente) {
+          const fantasiaFinal = nomeFantasia || clienteExistente.nomeFantasia;
+          const ieFinal = ieInfo.normalized || clienteExistente.inscricaoEstadual;
+          const prazoFinal = prazoInformado
+            ? prazoInfo.value
+            : clienteExistente.prazoPagamentoBoleto;
+          const bairroFinal = bairro || clienteExistente.bairro;
+          const cidadeFinal = cidade || clienteExistente.cidade;
+
           await prisma.cliente.update({
             where: { id: clienteExistente.id },
             data: {
-              nomeFantasia: nomeFantasia || clienteExistente.nomeFantasia,
-              inscricaoEstadual: ieInfo.normalized || clienteExistente.inscricaoEstadual,
-              prazoPagamentoBoleto: prazoInformado
-                ? prazoInfo.value
-                : clienteExistente.prazoPagamentoBoleto,
+              nomeFantasia: fantasiaFinal,
+              inscricaoEstadual: ieFinal,
+              prazoPagamentoBoleto: prazoFinal,
               vendedorId: vendedorId,
               telefone: telefone || clienteExistente.telefone,
               email: email || clienteExistente.email,
               endereco: endereco || clienteExistente.endereco,
-              bairro: bairro || clienteExistente.bairro,
-              cidade: cidade || clienteExistente.cidade,
+              bairro: bairroFinal,
+              cidade: cidadeFinal,
               cep: (cep || clienteExistente.cep) || null,
               observacoes: observacoes || clienteExistente.observacoes,
+              buscaTexto: buildClienteBuscaTexto({
+                razaoSocialOuNome: razaoSocial,
+                nomeFantasia: fantasiaFinal,
+                cnpjNormalized: clienteExistente.cnpjNormalized,
+                inscricaoEstadual: ieFinal,
+                prazoPagamentoBoleto: prazoFinal,
+                cidade: cidadeFinal,
+                bairro: bairroFinal,
+              }),
             },
           });
           stats.atualizados++;
@@ -276,6 +316,14 @@ async function importarClientes(filePath: string, isDryRun: boolean) {
               cidade: cidade || null,
               cep: cep || null,
               observacoes: observacoes || null,
+              buscaTexto: buildClienteBuscaTexto({
+                razaoSocialOuNome: razaoSocial,
+                nomeFantasia: nomeFantasia || null,
+                inscricaoEstadual: ieInfo.normalized,
+                prazoPagamentoBoleto: prazoInfo.value,
+                cidade: cidade || null,
+                bairro: bairro || null,
+              }),
               ativo: true,
             },
           });

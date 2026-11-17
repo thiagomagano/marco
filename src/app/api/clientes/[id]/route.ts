@@ -4,6 +4,46 @@ import { requireAuth } from "@/lib/session.ts";
 import { isValidCnpj, normalizeCnpj, formatCnpj } from "@/lib/cnpj.ts";
 import { parseInscricaoEstadualInput } from "@/lib/inscricao-estadual.ts";
 import { normalizePrazoPagamentoBoleto } from "@/lib/prazo-pagamento.ts";
+import { buildClienteBuscaTexto } from "@/lib/cliente-search.ts";
+
+export async function GET(
+  _request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    await requireAuth();
+    const { id } = await params;
+
+    const cliente = await prisma.cliente.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        razaoSocialOuNome: true,
+        nomeFantasia: true,
+        cnpj: true,
+        cidade: true,
+        bairro: true,
+        prazoPagamentoBoleto: true,
+        ativo: true,
+        vendedorId: true,
+        vendedor: {
+          select: { id: true, nome: true },
+        },
+      },
+    });
+
+    if (!cliente) {
+      return NextResponse.json({ error: "Cliente não encontrado." }, { status: 404 });
+    }
+
+    return NextResponse.json(cliente);
+  } catch (error) {
+    return NextResponse.json(
+      { error: (error as Error).message || "Erro ao consultar cliente." },
+      { status: 500 }
+    );
+  }
+}
 
 export async function PATCH(
   request: Request,
@@ -80,11 +120,19 @@ export async function PATCH(
       }
     }
 
+    const razaoAtualizada = body.razaoSocialOuNome?.trim() ?? cliente.razaoSocialOuNome;
+    const fantasiaAtualizada =
+      body.nomeFantasia !== undefined ? body.nomeFantasia?.trim() || null : cliente.nomeFantasia;
+    const bairroAtualizado =
+      body.bairro !== undefined ? body.bairro?.trim() || null : cliente.bairro;
+    const cidadeAtualizada =
+      body.cidade !== undefined ? body.cidade?.trim() || null : cliente.cidade;
+
     const atualizado = await prisma.cliente.update({
       where: { id },
       data: {
-        razaoSocialOuNome: body.razaoSocialOuNome?.trim() ?? cliente.razaoSocialOuNome,
-        nomeFantasia: body.nomeFantasia !== undefined ? body.nomeFantasia?.trim() || null : cliente.nomeFantasia,
+        razaoSocialOuNome: razaoAtualizada,
+        nomeFantasia: fantasiaAtualizada,
         cnpj: formattedCnpj,
         cnpjNormalized: normalizedCnpj,
         inscricaoEstadual: inscricaoEstadualAtualizada,
@@ -93,10 +141,19 @@ export async function PATCH(
         telefone: body.telefone !== undefined ? body.telefone?.trim() || null : cliente.telefone,
         email: body.email !== undefined ? body.email?.trim() || null : cliente.email,
         endereco: body.endereco !== undefined ? body.endereco?.trim() || null : cliente.endereco,
-        bairro: body.bairro !== undefined ? body.bairro?.trim() || null : cliente.bairro,
-        cidade: body.cidade !== undefined ? body.cidade?.trim() || null : cliente.cidade,
+        bairro: bairroAtualizado,
+        cidade: cidadeAtualizada,
         cep: body.cep !== undefined ? body.cep?.trim() || null : cliente.cep,
         observacoes: body.observacoes !== undefined ? body.observacoes?.trim() || null : cliente.observacoes,
+        buscaTexto: buildClienteBuscaTexto({
+          razaoSocialOuNome: razaoAtualizada,
+          nomeFantasia: fantasiaAtualizada,
+          cnpjNormalized: normalizedCnpj,
+          inscricaoEstadual: inscricaoEstadualAtualizada,
+          prazoPagamentoBoleto: prazoAtualizado,
+          cidade: cidadeAtualizada,
+          bairro: bairroAtualizado,
+        }),
         ativo: body.ativo !== undefined ? Boolean(body.ativo) : cliente.ativo,
       },
       include: {

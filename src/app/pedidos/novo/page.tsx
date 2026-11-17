@@ -22,18 +22,14 @@ import {
   formatCurrency,
   formatQuantity,
 } from "@/lib/money.ts";
+import {
+  ClienteCombobox,
+  type ClienteResumo,
+} from "@/components/clientes/ClienteCombobox.tsx";
 
 interface Frigorifico {
   id: string;
   nomeFantasia: string;
-}
-
-interface Cliente {
-  id: string;
-  razaoSocialOuNome: string;
-  nomeFantasia: string | null;
-  cnpj: string | null;
-  vendedorId: string | null;
 }
 
 interface Vendedor {
@@ -69,7 +65,7 @@ export default function NovoPedidoPage() {
 
   // Estados dos selects
   const [frigorificos, setFrigorificos] = useState<Frigorifico[]>([]);
-  const [clientes, setClientes] = useState<Cliente[]>([]);
+  const [selectedCliente, setSelectedCliente] = useState<ClienteResumo | null>(null);
   const [vendedores, setVendedores] = useState<Vendedor[]>([]);
   const [produtosDisponiveis, setProdutosDisponiveis] = useState<Produto[]>([]);
 
@@ -77,6 +73,7 @@ export default function NovoPedidoPage() {
   const [frigorificoId, setFrigorificoId] = useState("");
   const [clienteId, setClienteId] = useState("");
   const [vendedorId, setVendedorId] = useState("");
+  const [filtrarPorVendedor, setFiltrarPorVendedor] = useState(false);
   const [observacoes, setObservacoes] = useState("");
   const [itens, setItens] = useState<FormItem[]>([]);
 
@@ -88,17 +85,15 @@ export default function NovoPedidoPage() {
   const [avisoTrocaCliente, setAvisoTrocaCliente] = useState(false);
   const [rascunhoRecuperado, setRascunhoRecuperado] = useState(false);
 
-  // Carrega opções iniciais (apenas ativos)
+  // Carrega opções iniciais leves (frigoríficos e vendedores ativos)
   useEffect(() => {
     async function loadData() {
       try {
-        const [fRes, cRes, vRes] = await Promise.all([
+        const [fRes, vRes] = await Promise.all([
           fetch("/api/frigorificos?ativos=true"),
-          fetch("/api/clientes?ativos=true"),
           fetch("/api/vendedores?ativos=true"),
         ]);
         if (fRes.ok) setFrigorificos(await fRes.json());
-        if (cRes.ok) setClientes(await cRes.json());
         if (vRes.ok) setVendedores(await vRes.json());
       } catch (e) {
         console.error("Erro ao carregar dados:", e);
@@ -177,26 +172,35 @@ export default function NovoPedidoPage() {
     }
   };
 
-  // Guarda: ao trocar de vendedor, ajusta o cliente selecionado
+  // Guarda: ao trocar de vendedor manualmente, ativa filtro e ajusta cliente se incompatível
   const handleVendedorChange = (novoVendedorId: string) => {
     setVendedorId(novoVendedorId);
-    if (clienteId) {
-      const clienteAtual = clientes.find((c) => c.id === clienteId);
-      if (clienteAtual && clienteAtual.vendedorId !== novoVendedorId) {
-        setClienteId("");
-        if (itens.length > 0) {
-          setAvisoTrocaCliente(true);
-        }
+    setFiltrarPorVendedor(Boolean(novoVendedorId));
+    if (
+      clienteId &&
+      novoVendedorId &&
+      selectedCliente?.vendedorId &&
+      selectedCliente.vendedorId !== novoVendedorId
+    ) {
+      setClienteId("");
+      setSelectedCliente(null);
+      if (itens.length > 0) {
+        setAvisoTrocaCliente(true);
       }
     }
   };
 
-  // Guarda 5.2.8: Alerta ao trocar de cliente
-  const handleClienteChange = (novoClienteId: string) => {
+  // Guarda 5.2.8: Alerta ao trocar de cliente e preenche vendedor automaticamente
+  const handleClienteChange = (cliente: ClienteResumo | null) => {
+    const novoClienteId = cliente?.id || "";
     if (itens.length > 0 && novoClienteId !== clienteId) {
       setAvisoTrocaCliente(true);
     }
+    setSelectedCliente(cliente);
     setClienteId(novoClienteId);
+    if (cliente?.vendedorId && cliente.vendedorId !== vendedorId) {
+      setVendedorId(cliente.vendedorId);
+    }
   };
 
   // Adiciona novo item vazio à lista
@@ -359,7 +363,9 @@ export default function NovoPedidoPage() {
     localStorage.removeItem("marco_draft_order");
     setFrigorificoId("");
     setClienteId("");
+    setSelectedCliente(null);
     setVendedorId("");
+    setFiltrarPorVendedor(false);
     setObservacoes("");
     setItens([]);
     setRascunhoRecuperado(false);
@@ -394,7 +400,7 @@ export default function NovoPedidoPage() {
         <div>
           <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Novo Pedido Comercial</h1>
           <p className="text-sm text-slate-500 mt-1">
-            Selecione o frigorífico, o vendedor responsável e o cliente comprador da carteira.
+            Selecione o frigorífico e busque o cliente comprador (o vendedor responsável é preenchido automaticamente).
           </p>
         </div>
 
@@ -422,7 +428,7 @@ export default function NovoPedidoPage() {
           </div>
         )}
 
-        {/* 1. SELEÇÃO COMERCIAL: Frigorífico, Vendedor, Cliente */}
+        {/* 1. SELEÇÃO COMERCIAL: Frigorífico, Cliente, Vendedor */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pb-6 border-b border-slate-200">
           {/* 1. Frigorífico */}
           <div>
@@ -446,10 +452,30 @@ export default function NovoPedidoPage() {
             </p>
           </div>
 
-          {/* 2. Vendedor */}
+          {/* 2. Cliente (busca direta com preenchimento automático do vendedor) */}
           <div>
             <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-              2. Vendedor Responsável *
+              2. Cliente Comprador *
+            </label>
+            <ClienteCombobox
+              value={clienteId}
+              selectedCliente={selectedCliente}
+              onChange={handleClienteChange}
+              vendedorId={filtrarPorVendedor ? vendedorId : ""}
+              ativosOnly={true}
+              placeholder="Buscar por nome, fantasia, CNPJ ou cidade..."
+            />
+            <p className="text-[11px] text-slate-400 mt-1">
+              {filtrarPorVendedor && vendedorId
+                ? "Filtrando clientes da carteira do vendedor selecionado."
+                : "Busque direto pelo cliente; o vendedor será preenchido automaticamente."}
+            </p>
+          </div>
+
+          {/* 3. Vendedor */}
+          <div>
+            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+              3. Vendedor Responsável *
             </label>
             <select
               value={vendedorId}
@@ -464,50 +490,8 @@ export default function NovoPedidoPage() {
               ))}
             </select>
             <p className="text-[11px] text-slate-400 mt-1">
-              Selecione o vendedor para carregar seus clientes.
+              Preenchido pelo cliente ou selecione para filtrar a carteira.
             </p>
-          </div>
-
-          {/* 3. Cliente */}
-          <div>
-            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-              3. Cliente Comprador *
-            </label>
-            {(() => {
-              const clientesDoVendedor = vendedorId
-                ? clientes.filter((c) => c.vendedorId === vendedorId)
-                : [];
-
-              return (
-                <>
-                  <select
-                    disabled={!vendedorId}
-                    value={clienteId}
-                    onChange={(e) => handleClienteChange(e.target.value)}
-                    className="w-full px-3.5 py-2.5 text-sm bg-white border border-slate-300 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-blue-500 font-medium disabled:bg-slate-100 disabled:text-slate-400"
-                  >
-                    <option value="">
-                      {!vendedorId
-                        ? "Selecione o vendedor primeiro..."
-                        : clientesDoVendedor.length === 0
-                        ? "Nenhum cliente para este vendedor"
-                        : "Selecione o Cliente..."}
-                    </option>
-                    {clientesDoVendedor.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.nomeFantasia ? `${c.nomeFantasia} (${c.razaoSocialOuNome})` : c.razaoSocialOuNome}
-                        {c.cnpj ? ` - CNPJ: ${c.cnpj}` : ""}
-                      </option>
-                    ))}
-                  </select>
-                  <p className="text-[11px] text-slate-400 mt-1">
-                    {!vendedorId
-                      ? "Disponível após selecionar o vendedor."
-                      : `${clientesDoVendedor.length} cliente(s) na carteira deste vendedor.`}
-                  </p>
-                </>
-              );
-            })()}
           </div>
         </div>
 

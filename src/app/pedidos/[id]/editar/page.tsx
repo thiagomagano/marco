@@ -26,18 +26,14 @@ import {
   formatCurrency,
   formatQuantity,
 } from "@/lib/money.ts";
+import {
+  ClienteCombobox,
+  type ClienteResumo,
+} from "@/components/clientes/ClienteCombobox.tsx";
 
 interface Frigorifico {
   id: string;
   nomeFantasia: string;
-}
-
-interface Cliente {
-  id: string;
-  razaoSocialOuNome: string;
-  nomeFantasia: string | null;
-  cnpj: string | null;
-  vendedorId: string | null;
 }
 
 interface Vendedor {
@@ -78,7 +74,7 @@ export default function EditarPedidoPage({
 
   // Estados dos selects
   const [frigorificos, setFrigorificos] = useState<Frigorifico[]>([]);
-  const [clientes, setClientes] = useState<Cliente[]>([]);
+  const [selectedCliente, setSelectedCliente] = useState<ClienteResumo | null>(null);
   const [vendedores, setVendedores] = useState<Vendedor[]>([]);
   const [produtosDisponiveis, setProdutosDisponiveis] = useState<Produto[]>([]);
 
@@ -88,6 +84,7 @@ export default function EditarPedidoPage({
   const [frigorificoId, setFrigorificoId] = useState("");
   const [clienteId, setClienteId] = useState("");
   const [vendedorId, setVendedorId] = useState("");
+  const [filtrarPorVendedor, setFiltrarPorVendedor] = useState(false);
   const [observacoes, setObservacoes] = useState("");
   const [itens, setItens] = useState<FormItem[]>([]);
 
@@ -99,17 +96,15 @@ export default function EditarPedidoPage({
   const [modalTrocaFrigorifico, setModalTrocaFrigorifico] = useState<string | null>(null);
   const [avisoTrocaCliente, setAvisoTrocaCliente] = useState(false);
 
-  // Carrega opções de apoio (ativos)
+  // Carrega opções leves de apoio (frigoríficos e vendedores ativos)
   useEffect(() => {
     async function loadAuxiliares() {
       try {
-        const [fRes, cRes, vRes] = await Promise.all([
+        const [fRes, vRes] = await Promise.all([
           fetch("/api/frigorificos?ativos=true"),
-          fetch("/api/clientes?ativos=true"),
           fetch("/api/vendedores?ativos=true"),
         ]);
         if (fRes.ok) setFrigorificos(await fRes.json());
-        if (cRes.ok) setClientes(await cRes.json());
         if (vRes.ok) setVendedores(await vRes.json());
       } catch (e) {
         console.error("Erro ao carregar dados auxiliares:", e);
@@ -133,6 +128,22 @@ export default function EditarPedidoPage({
         setFrigorificoId(data.frigorificoId);
         setVendedorId(data.vendedorId);
         setClienteId(data.clienteId);
+        if (data.cliente) {
+          setSelectedCliente({
+            id: data.cliente.id,
+            razaoSocialOuNome: data.cliente.razaoSocialOuNome,
+            nomeFantasia: data.cliente.nomeFantasia ?? null,
+            cnpj: data.cliente.cnpj ?? null,
+            cidade: data.cliente.cidade ?? null,
+            bairro: data.cliente.bairro ?? null,
+            prazoPagamentoBoleto: data.cliente.prazoPagamentoBoleto ?? null,
+            ativo: data.cliente.ativo,
+            vendedorId: data.cliente.vendedorId ?? data.vendedorId ?? null,
+            vendedor: data.vendedor
+              ? { id: data.vendedor.id, nome: data.vendedor.nome }
+              : null,
+          });
+        }
         setObservacoes(data.observacoes || "");
 
         if (data.itens && Array.isArray(data.itens)) {
@@ -209,23 +220,32 @@ export default function EditarPedidoPage({
   // Troca de vendedor: ajusta cliente se não pertencer ao novo vendedor
   const handleVendedorChange = (novoVendedorId: string) => {
     setVendedorId(novoVendedorId);
-    if (clienteId) {
-      const clienteAtual = clientes.find((c) => c.id === clienteId);
-      if (clienteAtual && clienteAtual.vendedorId !== novoVendedorId) {
-        setClienteId("");
-        if (itens.length > 0) {
-          setAvisoTrocaCliente(true);
-        }
+    setFiltrarPorVendedor(Boolean(novoVendedorId));
+    if (
+      clienteId &&
+      novoVendedorId &&
+      selectedCliente?.vendedorId &&
+      selectedCliente.vendedorId !== novoVendedorId
+    ) {
+      setClienteId("");
+      setSelectedCliente(null);
+      if (itens.length > 0) {
+        setAvisoTrocaCliente(true);
       }
     }
   };
 
-  // Troca de cliente
-  const handleClienteChange = (novoClienteId: string) => {
+  // Troca de cliente e preenchimento automático do vendedor
+  const handleClienteChange = (cliente: ClienteResumo | null) => {
+    const novoClienteId = cliente?.id || "";
     if (itens.length > 0 && novoClienteId !== clienteId) {
       setAvisoTrocaCliente(true);
     }
+    setSelectedCliente(cliente);
     setClienteId(novoClienteId);
+    if (cliente?.vendedorId && cliente.vendedorId !== vendedorId) {
+      setVendedorId(cliente.vendedorId);
+    }
   };
 
   // Adiciona novo item à lista
@@ -515,7 +535,7 @@ export default function EditarPedidoPage({
 
       {/* Formulário Principal */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-6 sm:p-8 space-y-8">
-        {/* 1. SELEÇÃO COMERCIAL: Frigorífico -> Vendedor -> Cliente */}
+        {/* 1. SELEÇÃO COMERCIAL: Frigorífico -> Cliente -> Vendedor */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {/* 1. Frigorífico */}
           <div>
@@ -540,11 +560,32 @@ export default function EditarPedidoPage({
             </p>
           </div>
 
-          {/* 2. Vendedor */}
+          {/* 2. Cliente */}
+          <div>
+            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
+              <Users className="w-4 h-4 text-slate-500" />
+              2. Cliente Comprador *
+            </label>
+            <ClienteCombobox
+              value={clienteId}
+              selectedCliente={selectedCliente}
+              onChange={handleClienteChange}
+              vendedorId={filtrarPorVendedor ? vendedorId : ""}
+              ativosOnly={true}
+              placeholder="Buscar por nome, fantasia, CNPJ ou cidade..."
+            />
+            <p className="text-[11px] text-slate-400 mt-1">
+              {filtrarPorVendedor && vendedorId
+                ? "Filtrando clientes vinculados ao vendedor selecionado."
+                : "Busque direto pelo cliente; o vendedor será atualizado automaticamente."}
+            </p>
+          </div>
+
+          {/* 3. Vendedor */}
           <div>
             <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
               <UserCheck className="w-4 h-4 text-slate-500" />
-              2. Vendedor Responsável *
+              3. Vendedor Responsável *
             </label>
             <select
               value={vendedorId}
@@ -559,51 +600,8 @@ export default function EditarPedidoPage({
               ))}
             </select>
             <p className="text-[11px] text-slate-400 mt-1">
-              Filtra os clientes vinculados a este vendedor.
+              Preenchido pelo cliente ou selecione para filtrar a carteira.
             </p>
-          </div>
-
-          {/* 3. Cliente */}
-          <div>
-            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
-              <Users className="w-4 h-4 text-slate-500" />
-              3. Cliente Comprador *
-            </label>
-            {(() => {
-              const clientesDoVendedor = vendedorId
-                ? clientes.filter((c) => c.vendedorId === vendedorId)
-                : [];
-
-              return (
-                <>
-                  <select
-                    disabled={!vendedorId}
-                    value={clienteId}
-                    onChange={(e) => handleClienteChange(e.target.value)}
-                    className="w-full px-3.5 py-2.5 text-sm bg-white border border-slate-300 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-blue-500 font-medium disabled:bg-slate-100 disabled:text-slate-400"
-                  >
-                    <option value="">
-                      {!vendedorId
-                        ? "Selecione o vendedor primeiro..."
-                        : clientesDoVendedor.length === 0
-                        ? "Nenhum cliente para este vendedor"
-                        : "Selecione o Cliente..."}
-                    </option>
-                    {clientesDoVendedor.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.nomeFantasia ? `${c.nomeFantasia} (${c.razaoSocialOuNome})` : c.razaoSocialOuNome}
-                        {c.cnpj ? ` - CNPJ: ${c.cnpj}` : ""}
-                      </option>
-                    ))}
-                  </select>
-                  <p className="text-[11px] text-slate-400 mt-1">
-                    {!vendedorId
-                      ? "Disponível após selecionar o vendedor."
-                      : `${clientesDoVendedor.length} cliente(s) na carteira deste vendedor.`}
-                  </p>
-                </>
-              );
-            })()}
           </div>
         </div>
 

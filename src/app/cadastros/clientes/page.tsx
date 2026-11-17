@@ -1,17 +1,16 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
-  Users,
   Plus,
   Edit2,
-  CheckCircle2,
-  XCircle,
   Search,
   AlertCircle,
-  Building,
   UserCheck,
   Trash2,
+  ChevronLeft,
+  ChevronRight,
+  X,
 } from "lucide-react";
 import { formatCnpj } from "@/lib/cnpj.ts";
 import { formatInscricaoEstadual } from "@/lib/inscricao-estadual.ts";
@@ -55,7 +54,13 @@ export default function ClientesPage() {
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [vendedores, setVendedores] = useState<Vendedor[]>([]);
   const [filtroVendedorId, setFiltroVendedorId] = useState("");
+  const [filtroStatus, setFiltroStatus] = useState<"TODOS" | "ATIVOS" | "INATIVOS">("TODOS");
+  const [buscaInput, setBuscaInput] = useState("");
   const [busca, setBusca] = useState("");
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(50);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(true);
 
   // Modal formulário
@@ -87,22 +92,39 @@ export default function ClientesPage() {
   const [excluindo, setExcluindo] = useState(false);
   const [erroExclusao, setErroExclusao] = useState<string | null>(null);
 
-  const carregarClientes = async () => {
-    setLoading(true);
-    try {
-      const url = filtroVendedorId
-        ? `/api/clientes?vendedorId=${filtroVendedorId}`
-        : "/api/clientes";
-      const res = await fetch(url);
-      if (res.ok) {
-        setClientes(await res.json());
+  const carregarClientes = useCallback(
+    async (signal?: AbortSignal) => {
+      setLoading(true);
+      try {
+        const params = new URLSearchParams();
+        params.set("page", String(page));
+        params.set("limit", String(limit));
+        if (filtroVendedorId) params.set("vendedorId", filtroVendedorId);
+        if (filtroStatus === "ATIVOS") params.set("ativos", "true");
+        if (filtroStatus === "INATIVOS") params.set("ativos", "false");
+        if (busca.trim()) params.set("busca", busca.trim());
+
+        const res = await fetch(`/api/clientes?${params.toString()}`, {
+          signal,
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setClientes(data.clientes || []);
+          setTotal(data.pagination?.total ?? 0);
+          setTotalPages(data.pagination?.totalPages ?? 1);
+        }
+      } catch (e) {
+        if ((e as Error)?.name !== "AbortError") {
+          console.error(e);
+        }
+      } finally {
+        if (!signal?.aborted) {
+          setLoading(false);
+        }
       }
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setLoading(false);
-    }
-  };
+    },
+    [page, limit, filtroVendedorId, filtroStatus, busca]
+  );
 
   const carregarVendedores = async () => {
     try {
@@ -119,9 +141,24 @@ export default function ClientesPage() {
     carregarVendedores();
   }, []);
 
+  // Debounce da busca textual + reset para página 1
   useEffect(() => {
-    carregarClientes();
-  }, [filtroVendedorId]);
+    const timer = setTimeout(() => {
+      setBusca((prev) => {
+        if (prev !== buscaInput) {
+          setPage(1);
+        }
+        return buscaInput;
+      });
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [buscaInput]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    carregarClientes(controller.signal);
+    return () => controller.abort();
+  }, [carregarClientes]);
 
   const abrirCriacao = () => {
     setEditandoId(null);
@@ -244,7 +281,11 @@ export default function ClientesPage() {
         throw new Error(data.error || "Erro ao excluir cliente.");
       }
       setClienteExcluir(null);
-      carregarClientes();
+      if (clientes.length === 1 && page > 1) {
+        setPage((p) => p - 1);
+      } else {
+        carregarClientes();
+      }
     } catch (err) {
       setErroExclusao((err as Error).message);
     } finally {
@@ -252,20 +293,24 @@ export default function ClientesPage() {
     }
   };
 
-  const filtrados = clientes.filter(
-    (c) =>
-      c.razaoSocialOuNome.toLowerCase().includes(busca.toLowerCase()) ||
-      (c.nomeFantasia && c.nomeFantasia.toLowerCase().includes(busca.toLowerCase())) ||
-      (c.cnpj && c.cnpj.includes(busca)) ||
-      (c.inscricaoEstadual &&
-        (c.inscricaoEstadual.toLowerCase().includes(busca.toLowerCase()) ||
-          formatInscricaoEstadual(c.inscricaoEstadual).includes(busca))) ||
-      (c.prazoPagamentoBoleto &&
-        c.prazoPagamentoBoleto.toLowerCase().includes(busca.toLowerCase())) ||
-      (c.vendedor?.nome && c.vendedor.nome.toLowerCase().includes(busca.toLowerCase())) ||
-      (c.cidade && c.cidade.toLowerCase().includes(busca.toLowerCase())) ||
-      (c.bairro && c.bairro.toLowerCase().includes(busca.toLowerCase()))
-  );
+  const inicioExibicao = total === 0 ? 0 : (page - 1) * limit + 1;
+  const fimExibicao = Math.min(page * limit, total);
+
+  const paginasVisiveis = (() => {
+    const pages: Array<number | "..."> = [];
+    if (totalPages <= 7) {
+      for (let i = 1; i <= totalPages; i++) pages.push(i);
+      return pages;
+    }
+    pages.push(1);
+    if (page > 3) pages.push("...");
+    const start = Math.max(2, page - 1);
+    const end = Math.min(totalPages - 1, page + 1);
+    for (let i = start; i <= end; i++) pages.push(i);
+    if (page < totalPages - 2) pages.push("...");
+    pages.push(totalPages);
+    return pages;
+  })();
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
@@ -295,7 +340,7 @@ export default function ClientesPage() {
       )}
 
       {/* Filtros e Busca */}
-      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs grid grid-cols-1 md:grid-cols-3 gap-3">
+      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs grid grid-cols-1 md:grid-cols-4 gap-3">
         {/* Filtro por Vendedor */}
         <div>
           <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
@@ -303,7 +348,10 @@ export default function ClientesPage() {
           </label>
           <select
             value={filtroVendedorId}
-            onChange={(e) => setFiltroVendedorId(e.target.value)}
+            onChange={(e) => {
+              setFiltroVendedorId(e.target.value);
+              setPage(1);
+            }}
             className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-blue-500 font-semibold"
           >
             <option value="">Todos os Vendedores</option>
@@ -312,6 +360,25 @@ export default function ClientesPage() {
                 {v.nome}
               </option>
             ))}
+          </select>
+        </div>
+
+        {/* Filtro por Status */}
+        <div>
+          <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
+            Status
+          </label>
+          <select
+            value={filtroStatus}
+            onChange={(e) => {
+              setFiltroStatus(e.target.value as "TODOS" | "ATIVOS" | "INATIVOS");
+              setPage(1);
+            }}
+            className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-blue-500 font-semibold"
+          >
+            <option value="TODOS">Todos</option>
+            <option value="ATIVOS">Somente Ativos</option>
+            <option value="INATIVOS">Somente Inativos</option>
           </select>
         </div>
 
@@ -324,20 +391,68 @@ export default function ClientesPage() {
             <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
             <input
               type="text"
-              placeholder="Buscar por razão social, nome fantasia, CNPJ, IE, prazo, vendedor, cidade ou bairro..."
-              value={busca}
-              onChange={(e) => setBusca(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-blue-500"
+              placeholder="Buscar por razão social, nome fantasia, CNPJ, IE, prazo, cidade ou bairro..."
+              value={buscaInput}
+              onChange={(e) => setBuscaInput(e.target.value)}
+              className="w-full pl-9 pr-8 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-blue-500"
             />
+            {buscaInput && (
+              <button
+                type="button"
+                onClick={() => {
+                  setBuscaInput("");
+                  setBusca("");
+                  setPage(1);
+                }}
+                className="absolute right-2.5 top-2 text-slate-400 hover:text-slate-700 cursor-pointer"
+                title="Limpar busca"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
           </div>
         </div>
       </div>
 
       {/* Lista de Clientes */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+        {/* Resumo e Seletor de Itens por Página */}
+        <div className="px-4 py-3 border-b border-slate-100 bg-slate-50/70 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 text-xs text-slate-600">
+          <div>
+            {loading ? (
+              <span>Consultando clientes...</span>
+            ) : total === 0 ? (
+              <span>0 clientes encontrados</span>
+            ) : (
+              <span>
+                Mostrando <strong>{inicioExibicao}</strong>–<strong>{fimExibicao}</strong> de{" "}
+                <strong>{total.toLocaleString("pt-BR")}</strong> cliente(s)
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <label htmlFor="clientes-limit" className="text-[11px] font-semibold text-slate-500">
+              Por página:
+            </label>
+            <select
+              id="clientes-limit"
+              value={limit}
+              onChange={(e) => {
+                setLimit(Number(e.target.value));
+                setPage(1);
+              }}
+              className="px-2 py-1 text-xs bg-white border border-slate-200 rounded-lg font-semibold text-slate-700 focus:outline-hidden focus:ring-2 focus:ring-blue-500"
+            >
+              <option value={50}>50</option>
+              <option value={100}>100</option>
+              <option value={200}>200</option>
+            </select>
+          </div>
+        </div>
+
         {loading ? (
           <div className="p-12 text-center text-slate-500 text-sm">Carregando clientes...</div>
-        ) : filtrados.length === 0 ? (
+        ) : clientes.length === 0 ? (
           <div className="p-12 text-center text-slate-500 text-sm">
             Nenhum cliente encontrado.
           </div>
@@ -359,7 +474,7 @@ export default function ClientesPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
-                {filtrados.map((c) => (
+                {clientes.map((c) => (
                   <tr key={c.id} className="hover:bg-slate-50/80 transition">
                     <td className="py-3 px-4 font-bold text-slate-900">
                       {c.razaoSocialOuNome}
@@ -462,6 +577,57 @@ export default function ClientesPage() {
                 ))}
               </tbody>
             </table>
+          </div>
+        )}
+
+        {/* Controles de Paginação */}
+        {!loading && totalPages > 1 && (
+          <div className="px-4 py-3 border-t border-slate-100 bg-slate-50/70 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
+            <span className="text-slate-500">
+              Página <strong>{page}</strong> de <strong>{totalPages}</strong>
+            </span>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                disabled={page <= 1}
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-700 font-semibold hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+              >
+                <ChevronLeft className="w-3.5 h-3.5" />
+                <span>Anterior</span>
+              </button>
+
+              {paginasVisiveis.map((item, idx) =>
+                item === "..." ? (
+                  <span key={`ellipsis-${idx}`} className="px-2 text-slate-400">
+                    ...
+                  </span>
+                ) : (
+                  <button
+                    key={item}
+                    type="button"
+                    onClick={() => setPage(item)}
+                    className={`min-w-8 px-2.5 py-1.5 rounded-lg border font-semibold cursor-pointer transition ${
+                      item === page
+                        ? "bg-blue-600 text-white border-blue-600"
+                        : "bg-white text-slate-700 border-slate-200 hover:bg-slate-100"
+                    }`}
+                  >
+                    {item}
+                  </button>
+                )
+              )}
+
+              <button
+                type="button"
+                disabled={page >= totalPages}
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-700 font-semibold hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+              >
+                <span>Próxima</span>
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
           </div>
         )}
       </div>
