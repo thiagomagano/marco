@@ -30,6 +30,7 @@ describe("Compartilhamento, Print e PDF A4 Imprimível de Pedido", () => {
       nomeFantasia: "Supermercado Silva",
       cnpj: "98.765.432/0001-10",
       telefone: "(11) 99999-8888",
+      email: "compras@supermercadosilva.com.br",
       endereco: "Av. Brasil, 500",
       bairro: "Centro",
       cidade: "Campinas - SP",
@@ -103,6 +104,8 @@ describe("Compartilhamento, Print e PDF A4 Imprimível de Pedido", () => {
         "Endereço: Av. Brasil, 500 • Bairro Centro • Campinas - SP • CEP 13010-000"
       )
     );
+    assert(texto.includes("Tel. Cliente: (11) 99999-8888"));
+    assert(texto.includes("E-mail Cliente: compras@supermercadosilva.com.br"));
     assert(texto.includes("*Vendedor:* Carlos Representante"));
     assert(
       texto.includes(
@@ -125,6 +128,7 @@ describe("Compartilhamento, Print e PDF A4 Imprimível de Pedido", () => {
     assert(html.includes("PED-2026-00042"));
     assert(html.includes("Frigorífico Valupi"));
     assert(html.includes("Supermercado Silva"));
+    assert(html.includes("E-mail: compras@supermercadosilva.com.br"));
     assert(html.includes("Av. Brasil, 500 • Bairro Centro • Campinas - SP • CEP 13010-000"));
     assert(html.includes("Costela Suína Congelada"));
     assert(html.includes("caixa 20kg"));
@@ -156,5 +160,20 @@ describe("Compartilhamento, Print e PDF A4 Imprimível de Pedido", () => {
     assert(html.includes("TOTAL ESTIMADO:"));
     assert(!html.includes("Peso Informado do Pedido"));
     assert(!html.includes("PESO INFORMADO:"));
+  });
+
+  it("deve omitir o campo E-mail quando o cliente não possuir e-mail cadastrado", () => {
+    const pedidoSemEmail: PedidoShareData = {
+      ...pedidoExemplo,
+      cliente: {
+        ...pedidoExemplo.cliente,
+        email: "   ",
+      },
+    };
+    const texto = gerarTextoResumoWhatsApp(pedidoSemEmail);
+    const html = gerarHtmlImpressaoA4(pedidoSemEmail);
+
+    assert(!texto.includes("E-mail Cliente:"));
+    assert(!html.includes("E-mail:"));
   });
 });

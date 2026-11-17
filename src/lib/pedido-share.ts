@@ -42,6 +42,7 @@ export interface PedidoShareData {
     inscricaoEstadual?: string | null;
     prazoPagamentoBoleto?: string | null;
     telefone: string | null;
+    email?: string | null;
     endereco: string | null;
     bairro: string | null;
     cidade: string | null;
@@ -115,6 +116,10 @@ export function gerarTextoResumoWhatsApp(pedido: PedidoShareData): string {
   if (pedido.cliente.telefone) {
     linhas.push(`Tel. Cliente: ${pedido.cliente.telefone}`);
   }
+  const emailCliente = pedido.cliente.email?.trim();
+  if (emailCliente) {
+    linhas.push(`E-mail Cliente: ${emailCliente}`);
+  }
 
   linhas.push(`*Vendedor:* ${pedido.vendedor.nome}`);
   linhas.push("");
@@ -155,6 +160,28 @@ export function gerarTextoResumoWhatsApp(pedido: PedidoShareData): string {
   return linhas.join("\n");
 }
 
+function pushWordWithOverflowSplit(
+  ctx: CanvasRenderingContext2D,
+  lines: string[],
+  word: string,
+  maxWidth: number
+): string {
+  if (ctx.measureText(word).width <= maxWidth || maxWidth <= 0) {
+    return word;
+  }
+  let chunk = "";
+  for (const ch of word) {
+    const next = chunk + ch;
+    if (chunk && ctx.measureText(next).width > maxWidth) {
+      lines.push(chunk);
+      chunk = ch;
+    } else {
+      chunk = next;
+    }
+  }
+  return chunk;
+}
+
 export function wrapTextLines(
   ctx: CanvasRenderingContext2D,
   text: string,
@@ -170,7 +197,7 @@ export function wrapTextLines(
       lines.push("");
       continue;
     }
-    let currentLine = words[0];
+    let currentLine = pushWordWithOverflowSplit(ctx, lines, words[0], maxWidth);
     for (let i = 1; i < words.length; i++) {
       const word = words[i];
       const testLine = `${currentLine} ${word}`;
@@ -178,10 +205,12 @@ export function wrapTextLines(
         currentLine = testLine;
       } else {
         lines.push(currentLine);
-        currentLine = word;
+        currentLine = pushWordWithOverflowSplit(ctx, lines, word, maxWidth);
       }
     }
-    lines.push(currentLine);
+    if (currentLine) {
+      lines.push(currentLine);
+    }
   }
 
   return lines;
@@ -501,6 +530,11 @@ export async function gerarImagemPrintPedido(
       ? wrapTextLines(mCtx, pedido.cliente.razaoSocialOuNome, colW)
       : [];
 
+  const emailCliente = pedido.cliente.email?.trim() || "";
+  const clienteEmailLines = emailCliente
+    ? wrapTextLines(mCtx, `E-mail: ${emailCliente}`, colW)
+    : [];
+
   const enderecoStr = formatarEnderecoCliente(pedido.cliente);
   const clienteEndLines = enderecoStr
     ? wrapTextLines(mCtx, `Endereço: ${enderecoStr}`, colW)
@@ -520,6 +554,7 @@ export async function gerarImagemPrintPedido(
     (pedido.cliente.inscricaoEstadual ? 17 : 0) +
     (pedido.cliente.prazoPagamentoBoleto ? 17 : 0) +
     (pedido.cliente.telefone ? 17 : 0) +
+    clienteEmailLines.length * 16 +
     clienteEndLines.length * 16;
 
   const col3Height =
@@ -825,6 +860,10 @@ export async function gerarImagemPrintPedido(
   if (pedido.cliente.telefone) {
     ctx.fillText(`Tel: ${pedido.cliente.telefone}`, col2X, c2Y);
     c2Y += 17;
+  }
+  for (const line of clienteEmailLines) {
+    ctx.fillText(line, col2X, c2Y);
+    c2Y += 16;
   }
   for (const line of clienteEndLines) {
     ctx.fillText(line, col2X, c2Y);
@@ -1315,6 +1354,7 @@ export function gerarHtmlImpressaoA4(pedido: PedidoShareData): string {
     .party-detail {
       font-size: 10.5px;
       color: #111111;
+      overflow-wrap: anywhere;
     }
     .items-table {
       width: 100%;
@@ -1469,6 +1509,13 @@ export function gerarHtmlImpressaoA4(pedido: PedidoShareData): string {
               : ""
           }
           ${
+            pedido.cliente.email?.trim()
+              ? `<div class="party-detail">E-mail: ${escapeHtml(
+                  pedido.cliente.email.trim()
+                )}</div>`
+              : ""
+          }
+          ${
             enderecoCompleto
               ? `<div class="party-detail"><strong>End.:</strong> ${escapeHtml(
                   enderecoCompleto
@@ -1598,6 +1645,10 @@ export async function renderizarPaginasA4Canvas(
     pedido.cliente.nomeFantasia !== pedido.cliente.razaoSocialOuNome
       ? wrapTextLines(mCtx, pedido.cliente.razaoSocialOuNome, colW - 16)
       : [];
+  const emailCliente = pedido.cliente.email?.trim() || "";
+  const cliEmailLines = emailCliente
+    ? wrapTextLines(mCtx, `E-mail: ${emailCliente}`, colW - 16)
+    : [];
   const endStr = formatarEnderecoCliente(pedido.cliente);
   const cliEndLines = endStr
     ? wrapTextLines(mCtx, `End.: ${endStr}`, colW - 16)
@@ -1616,6 +1667,7 @@ export async function renderizarPaginasA4Canvas(
     (pedido.cliente.inscricaoEstadual ? 15 : 0) +
     (pedido.cliente.prazoPagamentoBoleto ? 15 : 0) +
     (pedido.cliente.telefone ? 15 : 0) +
+    cliEmailLines.length * 14 +
     cliEndLines.length * 14;
   const p3H =
     26 +
@@ -1854,6 +1906,10 @@ export async function renderizarPaginasA4Canvas(
   if (pedido.cliente.telefone) {
     ctx.fillText(`Tel: ${pedido.cliente.telefone}`, col2X + 8, py2);
     py2 += 15;
+  }
+  for (const l of cliEmailLines) {
+    ctx.fillText(l, col2X + 8, py2);
+    py2 += 14;
   }
   for (const l of cliEndLines) {
     ctx.fillText(l, col2X + 8, py2);
@@ -2355,6 +2411,10 @@ export function gerarTextoWhatsAppPacote(pacote: PacotePedidosData): string {
     if (p.cliente.cidade) {
       linhas.push(`*Cidade:* ${p.cliente.cidade}`);
     }
+    const emailCliente = p.cliente.email?.trim();
+    if (emailCliente) {
+      linhas.push(`*E-mail:* ${emailCliente}`);
+    }
     if (p.vendedor?.nome) {
       linhas.push(`*Vendedor:* ${p.vendedor.nome}`);
     }
@@ -2473,6 +2533,13 @@ export function gerarHtmlImpressaoA4Pacote(pacote: PacotePedidosData): string {
                 : ""
             }
             <div><span class="info-label">Cidade:</span> ${escapeHtml(p.cliente.cidade || "-")}</div>
+            ${
+              p.cliente.email?.trim()
+                ? `<div><span class="info-label">E-mail:</span> ${escapeHtml(
+                    p.cliente.email.trim()
+                  )}</div>`
+                : ""
+            }
             <div><span class="info-label">Vendedor:</span> ${escapeHtml(p.vendedor?.nome || "-")}</div>
           </div>
         </div>
@@ -2681,6 +2748,7 @@ export function gerarHtmlImpressaoA4Pacote(pacote: PacotePedidosData): string {
       gap: 16px;
       font-size: 9.5px;
       color: #222222;
+      overflow-wrap: anywhere;
     }
     .info-label {
       font-weight: bold;
@@ -2882,7 +2950,14 @@ export async function renderizarPaginasA4PacoteCanvas(
       `${nomeCliente}${razaoComplemento}`,
       CLIENT_NAME_MAX_W
     );
-    const clientBoxH = 16 + clientNameLines.length * 14 + 20;
+    const emailCliente = p.cliente.email?.trim() || "";
+    mCtx.font = `600 9.5px ${FONT_SANS}`;
+    const clientEmailLines = emailCliente
+      ? wrapTextLines(mCtx, emailCliente, CONTENT_W - 60)
+      : [];
+    const emailBoxExtraH =
+      clientEmailLines.length > 0 ? clientEmailLines.length * 14 + 2 : 0;
+    const clientBoxH = 16 + clientNameLines.length * 14 + 20 + emailBoxExtraH;
 
     mCtx.font = `700 10px ${FONT_SANS}`;
     const itemRows = p.itens.map((it) => {
@@ -2900,7 +2975,7 @@ export async function renderizarPaginasA4PacoteCanvas(
     const thH = 20;
     const blockH = pHeaderH + clientBoxH + thH + itemsH + obsH + 12;
     dynamicHeight += blockH;
-    return { clientNameLines, clientBoxH, itemRows, blockH };
+    return { clientNameLines, clientEmailLines, clientBoxH, itemRows, blockH };
   });
 
   dynamicHeight += 76 + 40; // Summary box e footer
@@ -3007,7 +3082,13 @@ export async function renderizarPaginasA4PacoteCanvas(
   }
 
   pacote.pedidos.forEach((p, idx) => {
-    const { clientNameLines, clientBoxH, itemRows, blockH } = measuredOrders[idx];
+    const {
+      clientNameLines,
+      clientEmailLines,
+      clientBoxH,
+      itemRows,
+      blockH,
+    } = measuredOrders[idx];
 
     // Borda externa do Bloco do Pedido
     ctx.strokeStyle = "#000000";
@@ -3086,6 +3167,18 @@ export async function renderizarPaginasA4PacoteCanvas(
     ctx.fillStyle = "#111111";
     ctx.font = `600 9.5px ${FONT_SANS}`;
     ctx.fillText(p.vendedor?.nome || "-", x0 + metaColW * 2 + 56, metaY);
+
+    if (clientEmailLines.length > 0) {
+      const emailY = metaY + 16;
+      ctx.fillStyle = "#444444";
+      ctx.font = `700 8.5px ${FONT_SANS}`;
+      ctx.fillText("E-MAIL:", x0 + 8, emailY);
+      ctx.fillStyle = "#111111";
+      ctx.font = `600 9.5px ${FONT_SANS}`;
+      clientEmailLines.forEach((line, lIdx) => {
+        ctx.fillText(line, x0 + 52, emailY + lIdx * 14);
+      });
+    }
 
     py += clientBoxH;
 

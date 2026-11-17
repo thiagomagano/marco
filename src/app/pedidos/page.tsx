@@ -66,7 +66,10 @@ interface PedidoListItem {
     razaoSocialOuNome: string;
     nomeFantasia: string | null;
     cnpj?: string | null;
+    inscricaoEstadual?: string | null;
+    prazoPagamentoBoleto?: string | null;
     telefone?: string | null;
+    email?: string | null;
     endereco?: string | null;
     bairro?: string | null;
     cidade?: string | null;

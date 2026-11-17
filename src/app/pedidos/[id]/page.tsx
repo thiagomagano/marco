@@ -68,6 +68,7 @@ interface PedidoDetalhes {
     inscricaoEstadual?: string | null;
     prazoPagamentoBoleto?: string | null;
     telefone: string | null;
+    email?: string | null;
     endereco: string | null;
     bairro: string | null;
     cidade: string | null;
@@ -604,6 +605,12 @@ export default function DetalhesPedidoPage({
                   Prazo Boleto:{" "}
                 </span>
                 {pedido.cliente.prazoPagamentoBoleto}
+              </div>
+            )}
+            {pedido.cliente.email && (
+              <div className="text-slate-500 break-all">
+                <span className="font-semibold text-slate-700">E-mail: </span>
+                {pedido.cliente.email}
               </div>
             )}
             {(() => {

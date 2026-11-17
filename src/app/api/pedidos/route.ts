@@ -89,6 +89,7 @@ export async function GET(request: Request) {
             inscricaoEstadual: true,
             prazoPagamentoBoleto: true,
             telefone: true,
+            email: true,
             endereco: true,
             bairro: true,
             cidade: true,

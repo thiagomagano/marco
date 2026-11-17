@@ -30,6 +30,7 @@ describe("Pacote e Agrupamento de Pedidos em Resumo Único", () => {
         nomeFantasia: "Supermercado Alfa",
         cnpj: "11.222.333/0001-44",
         telefone: "(19) 98888-7777",
+        email: "compras@superalfa.com.br",
         endereco: "Rua das Flores, 100",
         bairro: "Centro",
         cidade: "Campinas - SP",
@@ -123,6 +124,7 @@ describe("Pacote e Agrupamento de Pedidos em Resumo Único", () => {
     assert(texto.includes("*Cliente:* Supermercado Alfa"));
     assert(texto.includes("*CNPJ:* 11.222.333/0001-44"));
     assert(texto.includes("*Cidade:* Campinas - SP"));
+    assert(texto.includes("*E-mail:* compras@superalfa.com.br"));
     assert(texto.includes("Costela Suína [caixa 20kg]"));
     assert(texto.includes("*PEDIDO 2: PED-2026-00002*"));
     assert(texto.includes("*Cliente:* Açougue Estrela"));
@@ -143,6 +145,7 @@ describe("Pacote e Agrupamento de Pedidos em Resumo Único", () => {
     assert(html.includes("Supermercado Alfa"));
     assert(html.includes("11.222.333/0001-44"));
     assert(html.includes("Campinas - SP"));
+    assert(html.includes("compras@superalfa.com.br"));
     assert(html.includes("PED-2026-00002"));
     assert(html.includes("Açougue Estrela"));
     assert(html.includes("22.333.444/0001-55"));
