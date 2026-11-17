@@ -95,6 +95,7 @@ export async function POST(request: Request) {
       cidade,
       cep,
       observacoes,
+      ativo,
     } = body;
 
     if (!razaoSocialOuNome || !razaoSocialOuNome.trim()) {
@@ -203,7 +204,7 @@ export async function POST(request: Request) {
           cidade: cidadeLimpa,
           bairro: bairroLimpo,
         }),
-        ativo: true,
+        ativo: ativo !== undefined ? Boolean(ativo) : true,
       },
       include: {
         vendedor: {

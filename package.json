@@ -13,6 +13,7 @@
     "db:modelos": "node --experimental-strip-types src/scripts/gerar-modelos.ts",
     "db:import": "node --experimental-strip-types src/scripts/import-excel.ts",
     "db:backfill-clientes": "node --experimental-strip-types src/scripts/backfill-clientes-busca.ts",
+    "db:desativar-sem-pedidos": "node --experimental-strip-types src/scripts/desativar-clientes-sem-pedidos.ts",
     "deploy:pack": "node --experimental-strip-types src/scripts/preparar-deploy.ts",
     "test": "node --test --experimental-strip-types tests/*.test.ts"
   },
@@ -32,7 +33,6 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.3.3",
-    "@tailwindcss/turbopack": "^4",
     "@types/bcryptjs": "^2.4.6",
     "@types/node": "^20",
     "@types/react": "^19",

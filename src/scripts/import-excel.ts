@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { prisma } from "../lib/db.ts";
 import {
   readSpreadsheet,
@@ -24,16 +25,28 @@ interface ImportStats {
   detalhesErros: Array<{ linha: number; identificador: string; motivo: string }>;
 }
 
-async function importarClientes(filePath: string, isDryRun: boolean) {
+export async function importarClientes(
+  filePath: string,
+  isDryRun: boolean,
+  ativoNovos = false
+): Promise<ImportStats> {
   console.log(`\n=================================================`);
   console.log(`Iniciando importação de CLIENTES ${isDryRun ? "[MODO SIMULAÇÃO / DRY-RUN]" : ""}`);
   console.log(`Arquivo: ${filePath}`);
+  console.log(`Novos clientes entrarão como: ${ativoNovos ? "ATIVOS (--ativos)" : "INATIVOS (padrão)"}`);
   console.log(`=================================================\n`);
 
   const rows = readSpreadsheet(filePath);
   if (rows.length === 0) {
     console.log("Aviso: A planilha está vazia ou não contém dados.");
-    return;
+    return {
+      total: 0,
+      validos: 0,
+      inseridos: 0,
+      atualizados: 0,
+      erros: 0,
+      detalhesErros: [],
+    };
   }
 
   // Carrega vendedores ativos do banco para associação
@@ -255,7 +268,7 @@ async function importarClientes(filePath: string, isDryRun: boolean) {
                 cidade: cidade || null,
                 bairro: bairro || null,
               }),
-              ativo: true,
+              ativo: ativoNovos,
             },
           });
           stats.inseridos++;
@@ -324,7 +337,7 @@ async function importarClientes(filePath: string, isDryRun: boolean) {
                 cidade: cidade || null,
                 bairro: bairro || null,
               }),
-              ativo: true,
+              ativo: ativoNovos,
             },
           });
           stats.inseridos++;
@@ -342,6 +355,7 @@ async function importarClientes(filePath: string, isDryRun: boolean) {
 
   // Relatório Final
   exibirRelatorio("CLIENTES", stats, isDryRun);
+  return stats;
 }
 
 async function importarProdutos(
@@ -594,6 +608,7 @@ async function main() {
   const filePathArg = args[1];
 
   const isDryRun = args.includes("--dry-run");
+  const ativoNovos = args.includes("--ativos");
 
   // Captura --frigorifico "Nome"
   let frigorificoFixo: string | undefined;
@@ -604,7 +619,7 @@ async function main() {
 
   if (!tipo || !["clientes", "produtos"].includes(tipo) || !filePathArg) {
     console.log("\nUso correto do script de importação:");
-    console.log("  npm run db:import clientes <caminho/arquivo.xlsx> [--dry-run]");
+    console.log("  npm run db:import clientes <caminho/arquivo.xlsx> [--dry-run] [--ativos]");
     console.log("  npm run db:import produtos <caminho/arquivo.xlsx> [--frigorifico \"Nome\"] [--dry-run]\n");
     console.log("Exemplos:");
     console.log("  npm run db:import clientes importacao/clientes.xlsx --dry-run");
@@ -620,17 +635,23 @@ async function main() {
   }
 
   if (tipo === "clientes") {
-    await importarClientes(absolutePath, isDryRun);
+    await importarClientes(absolutePath, isDryRun, ativoNovos);
   } else if (tipo === "produtos") {
     await importarProdutos(absolutePath, isDryRun, frigorificoFixo);
   }
 }
 
-main()
-  .catch((e) => {
-    console.error("Erro fatal na execução da importação:", e);
-    process.exit(1);
-  })
-  .finally(async () => {
-    await prisma.$disconnect();
-  });
+const isEntryPoint =
+  Boolean(process.argv[1]) &&
+  path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url));
+
+if (isEntryPoint) {
+  main()
+    .catch((e) => {
+      console.error("Erro fatal na execução da importação:", e);
+      process.exit(1);
+    })
+    .finally(async () => {
+      await prisma.$disconnect();
+    });
+}
