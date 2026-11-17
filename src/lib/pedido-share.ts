@@ -155,7 +155,7 @@ export function gerarTextoResumoWhatsApp(pedido: PedidoShareData): string {
   return linhas.join("\n");
 }
 
-function wrapTextLines(
+export function wrapTextLines(
   ctx: CanvasRenderingContext2D,
   text: string,
   maxWidth: number
@@ -233,7 +233,7 @@ function loadImageWithTimeout(src: string, timeoutMs = 4000): Promise<HTMLImageE
   });
 }
 
-async function loadBrandLogoImage(): Promise<HTMLImageElement | null> {
+export async function loadBrandLogoImage(): Promise<HTMLImageElement | null> {
   const primary = await loadImageWithTimeout(BRAND_LOGO_PATH);
   if (primary) return primary;
   return loadImageWithTimeout(BRAND_LOGO_FALLBACK_PATH);
@@ -272,7 +272,7 @@ function drawLogoContained(
   return { width: drawW, height: drawH };
 }
 
-function drawCanvasLetterhead(
+export function drawCanvasLetterhead(
   ctx: CanvasRenderingContext2D,
   logo: HTMLImageElement | null,
   opts: {
@@ -361,7 +361,7 @@ function drawCanvasLetterhead(
   ctx.restore();
 }
 
-function getPrintableLetterheadHtml(
+export function getPrintableLetterheadHtml(
   docType: string,
   docRef: string,
   docDate: string
@@ -393,7 +393,7 @@ function getPrintableLetterheadHtml(
     </header>`;
 }
 
-function imprimirHtmlEmPapel(html: string): void {
+export function imprimirHtmlEmPapel(html: string): void {
   const iframe = document.createElement("iframe");
   iframe.style.position = "fixed";
   iframe.style.right = "0";
@@ -1069,7 +1069,7 @@ export function gerarNomeArquivoPdf(numeroPedido: string): string {
   return `pedido-${limpo}.pdf`;
 }
 
-function escapeHtml(str: string | null | undefined): string {
+export function escapeHtml(str: string | null | undefined): string {
   if (!str) return "";
   return str
     .replace(/&/g, "&amp;")
@@ -2068,20 +2068,43 @@ export async function renderizarPaginasA4Canvas(
   ctx.fillText(`Gerado em ${new Date().toLocaleString("pt-BR")}`, xRight, y);
 
   // Fatia em páginas A4 individuais
+  return sliceMasterCanvasToA4Pages(
+    masterCanvas,
+    PAGE_W,
+    PAGE_H,
+    MARGIN,
+    usablePageH,
+    numPages,
+    SCALE
+  );
+}
+
+/**
+ * Fatia um canvas mestre vertical em páginas A4 individuais (largura/altura em escala).
+ */
+export function sliceMasterCanvasToA4Pages(
+  masterCanvas: HTMLCanvasElement,
+  pageW: number,
+  pageH: number,
+  margin: number,
+  usablePageH: number,
+  numPages: number,
+  scale: number
+): HTMLCanvasElement[] {
   const pages: HTMLCanvasElement[] = [];
   for (let p = 0; p < numPages; p++) {
     const pageCanvas = document.createElement("canvas");
-    pageCanvas.width = PAGE_W * SCALE;
-    pageCanvas.height = PAGE_H * SCALE;
+    pageCanvas.width = pageW * scale;
+    pageCanvas.height = pageH * scale;
     const pCtx = pageCanvas.getContext("2d");
     if (!pCtx) continue;
 
     pCtx.fillStyle = "#ffffff";
     pCtx.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
 
-    const srcY = p * usablePageH * SCALE;
+    const srcY = p * usablePageH * scale;
     const sliceH = Math.min(
-      (usablePageH + MARGIN * 2) * SCALE,
+      (usablePageH + margin * 2) * scale,
       masterCanvas.height - srcY
     );
 
@@ -2089,11 +2112,11 @@ export async function renderizarPaginasA4Canvas(
       masterCanvas,
       0,
       srcY,
-      PAGE_W * SCALE,
+      pageW * scale,
       sliceH,
       0,
       0,
-      PAGE_W * SCALE,
+      pageW * scale,
       sliceH
     );
 
@@ -2114,13 +2137,9 @@ function dataUrlToUint8Array(dataUrl: string): Uint8Array {
 }
 
 /**
- * Empacota uma ou mais páginas A4 em um arquivo binário PDF 1.4 válido (application/pdf)
- * pronto para download ou envio direto como documento.
+ * Empacota uma lista de canvases A4 em um arquivo binário PDF 1.4 válido (application/pdf).
  */
-export async function gerarArquivoPdfPedido(
-  pedido: PedidoShareData
-): Promise<Blob> {
-  const pageCanvases = await renderizarPaginasA4Canvas(pedido);
+export function gerarPdfDeCanvases(pageCanvases: HTMLCanvasElement[]): Blob {
   const A4_PT_W = 595.28;
   const A4_PT_H = 841.89;
 
@@ -2151,13 +2170,6 @@ export async function gerarArquivoPdfPedido(
 
   pushStr("%PDF-1.4\n%\xFF\xFF\xFF\xFF\n");
 
-  // Objetos:
-  // 1: Catalog
-  // 2: Pages
-  // Para cada página i (0..N-1):
-  //   pageObjId = 3 + i * 3
-  //   contentObjId = 4 + i * 3
-  //   imageObjId = 5 + i * 3
   const numPages = pageCanvases.length;
   const pageObjIds: number[] = [];
 
@@ -2188,14 +2200,12 @@ export async function gerarArquivoPdfPedido(
     const imageObjId = 5 + i * 3;
     const imgName = `/Im${i + 1}`;
 
-    // Page object
     startObj(pageObjId);
     pushStr(
       `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${A4_PT_W} ${A4_PT_H}] /Resources << /XObject << ${imgName} ${imageObjId} 0 R >> >> /Contents ${contentObjId} 0 R >>`
     );
     endObj();
 
-    // Content stream que posiciona a imagem cobrindo a folha A4
     const streamCmd = `q\n${A4_PT_W} 0 0 ${A4_PT_H} 0 0 cm\n${imgName} Do\nQ`;
     const streamBytes = encoder.encode(streamCmd);
     startObj(contentObjId);
@@ -2204,7 +2214,6 @@ export async function gerarArquivoPdfPedido(
     pushStr(`\nendstream`);
     endObj();
 
-    // Image XObject (DCTDecode / JPEG)
     startObj(imageObjId);
     pushStr(
       `<< /Type /XObject /Subtype /Image /Width ${canvas.width} /Height ${canvas.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${jpegBytes.byteLength} >>\nstream\n`
@@ -2231,6 +2240,17 @@ export async function gerarArquivoPdfPedido(
   return new Blob(chunks, { type: "application/pdf" });
 }
 
+/**
+ * Empacota uma ou mais páginas A4 em um arquivo binário PDF 1.4 válido (application/pdf)
+ * pronto para download ou envio direto como documento.
+ */
+export async function gerarArquivoPdfPedido(
+  pedido: PedidoShareData
+): Promise<Blob> {
+  const pageCanvases = await renderizarPaginasA4Canvas(pedido);
+  return gerarPdfDeCanvases(pageCanvases);
+}
+
 
 export interface PacotePedidosData {
   frigorificoNome: string;
@@ -2240,7 +2260,9 @@ export interface PacotePedidosData {
   totalGeralPesoKg: number;
 }
 
-export function compilarDadosPacote(pedidos: PedidoShareData[]): PacotePedidosData {
+export function validarPedidosParaPacote(pedidos: PedidoShareData[]): {
+  frigorificoNome: string;
+} {
   if (!pedidos || pedidos.length === 0) {
     throw new Error("Selecione pelo menos 1 pedido para gerar o resumo do pacote.");
   }
@@ -2269,7 +2291,13 @@ export function compilarDadosPacote(pedidos: PedidoShareData[]): PacotePedidosDa
     );
   }
 
-  const frigorificoNome = pedidos[0].frigorifico?.nomeFantasia || "Frigorífico";
+  return {
+    frigorificoNome: pedidos[0].frigorifico?.nomeFantasia || "Frigorífico",
+  };
+}
+
+export function compilarDadosPacote(pedidos: PedidoShareData[]): PacotePedidosData {
+  const { frigorificoNome } = validarPedidosParaPacote(pedidos);
 
   let totalValor = 0;
   let totalPeso = 0;
@@ -3226,39 +3254,15 @@ export async function renderizarPaginasA4PacoteCanvas(
   ctx.fillText(`Emitido em ${new Date().toLocaleString("pt-BR")}`, xRight, y);
 
   // Fatiamento A4
-  const pages: HTMLCanvasElement[] = [];
-  for (let p = 0; p < numPages; p++) {
-    const pageCanvas = document.createElement("canvas");
-    pageCanvas.width = PAGE_W * SCALE;
-    pageCanvas.height = PAGE_H * SCALE;
-    const pCtx = pageCanvas.getContext("2d");
-    if (!pCtx) continue;
-
-    pCtx.fillStyle = "#ffffff";
-    pCtx.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
-
-    const srcY = p * usablePageH * SCALE;
-    const sliceH = Math.min(
-      (usablePageH + MARGIN * 2) * SCALE,
-      masterCanvas.height - srcY
-    );
-
-    pCtx.drawImage(
-      masterCanvas,
-      0,
-      srcY,
-      PAGE_W * SCALE,
-      sliceH,
-      0,
-      0,
-      PAGE_W * SCALE,
-      sliceH
-    );
-
-    pages.push(pageCanvas);
-  }
-
-  return pages;
+  return sliceMasterCanvasToA4Pages(
+    masterCanvas,
+    PAGE_W,
+    PAGE_H,
+    MARGIN,
+    usablePageH,
+    numPages,
+    SCALE
+  );
 }
 
 export async function gerarImagemPrintPacote(
@@ -3282,102 +3286,5 @@ export async function gerarArquivoPdfPacote(
   pacote: PacotePedidosData
 ): Promise<Blob> {
   const pageCanvases = await renderizarPaginasA4PacoteCanvas(pacote);
-  const A4_PT_W = 595.28;
-  const A4_PT_H = 841.89;
-
-  const encoder = new TextEncoder();
-  const chunks: BlobPart[] = [];
-  const offsets: number[] = [0];
-  let byteLength = 0;
-
-  const pushStr = (s: string) => {
-    const arr = encoder.encode(s);
-    chunks.push(arr as unknown as BlobPart);
-    byteLength += arr.byteLength;
-  };
-
-  const pushBytes = (arr: Uint8Array) => {
-    chunks.push(arr as unknown as BlobPart);
-    byteLength += arr.byteLength;
-  };
-
-  const startObj = (id: number) => {
-    offsets[id] = byteLength;
-    pushStr(`${id} 0 obj\n`);
-  };
-
-  const endObj = () => {
-    pushStr(`\nendobj\n`);
-  };
-
-  pushStr("%PDF-1.4\n%\xFF\xFF\xFF\xFF\n");
-
-  const numPages = pageCanvases.length;
-  const pageObjIds: number[] = [];
-
-  for (let i = 0; i < numPages; i++) {
-    pageObjIds.push(3 + i * 3);
-  }
-
-  startObj(1);
-  pushStr(`<< /Type /Catalog /Pages 2 0 R >>`);
-  endObj();
-
-  startObj(2);
-  pushStr(
-    `<< /Type /Pages /Kids [${pageObjIds
-      .map((id) => `${id} 0 R`)
-      .join(" ")}] /Count ${numPages} >>`
-  );
-  endObj();
-
-  for (let i = 0; i < numPages; i++) {
-    const canvas = pageCanvases[i];
-    const jpegBytes = dataUrlToUint8Array(
-      canvas.toDataURL("image/jpeg", 0.95)
-    );
-
-    const pageObjId = 3 + i * 3;
-    const contentObjId = 4 + i * 3;
-    const imageObjId = 5 + i * 3;
-    const imgName = `/Im${i + 1}`;
-
-    startObj(pageObjId);
-    pushStr(
-      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${A4_PT_W} ${A4_PT_H}] /Resources << /XObject << ${imgName} ${imageObjId} 0 R >> >> /Contents ${contentObjId} 0 R >>`
-    );
-    endObj();
-
-    const streamCmd = `q\n${A4_PT_W} 0 0 ${A4_PT_H} 0 0 cm\n${imgName} Do\nQ`;
-    const streamBytes = encoder.encode(streamCmd);
-    startObj(contentObjId);
-    pushStr(`<< /Length ${streamBytes.byteLength} >>\nstream\n`);
-    pushBytes(streamBytes);
-    pushStr(`\nendstream`);
-    endObj();
-
-    startObj(imageObjId);
-    pushStr(
-      `<< /Type /XObject /Subtype /Image /Width ${canvas.width} /Height ${canvas.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${jpegBytes.byteLength} >>\nstream\n`
-    );
-    pushBytes(jpegBytes);
-    pushStr(`\nendstream`);
-    endObj();
-  }
-
-  const totalObjs = 2 + numPages * 3;
-  const xrefOffset = byteLength;
-
-  pushStr(`xref\n0 ${totalObjs + 1}\n`);
-  pushStr(`0000000000 65535 f \n`);
-  for (let id = 1; id <= totalObjs; id++) {
-    const offStr = String(offsets[id] || 0).padStart(10, "0");
-    pushStr(`${offStr} 00000 n \n`);
-  }
-
-  pushStr(
-    `trailer\n<< /Size ${totalObjs + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`
-  );
-
-  return new Blob(chunks, { type: "application/pdf" });
+  return gerarPdfDeCanvases(pageCanvases);
 }

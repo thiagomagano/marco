@@ -14,14 +14,9 @@ import {
   CheckSquare,
   Square,
   Package,
-  Printer,
-  Copy,
-  Download,
-  Check,
+  ClipboardList,
   AlertTriangle,
   X,
-  FileText,
-  Image as ImageIcon,
 } from "lucide-react";
 import { formatCurrency, formatQuantity } from "@/lib/money.ts";
 import {
@@ -35,6 +30,17 @@ import {
   imprimirPacoteEmPapel,
   renderizarPaginasA4PacoteCanvas,
 } from "@/lib/pedido-share.ts";
+import {
+  ResumoProducaoData,
+  compilarDadosResumoProducao,
+  gerarTextoWhatsAppProducao,
+  gerarNomeArquivoProducao,
+  gerarImagemPrintProducao,
+  gerarArquivoPdfProducao,
+  imprimirResumoProducaoEmPapel,
+  renderizarPaginasA4ProducaoCanvas,
+} from "@/lib/pacote-producao.ts";
+import { PacoteExportModal } from "@/components/pedidos/PacoteExportModal.tsx";
 
 interface PedidoListItem {
   id: string;
@@ -98,18 +104,19 @@ export default function PedidosPage() {
   const [selecionados, setSelecionados] = useState<Set<string>>(new Set());
   const [avisoSelecao, setAvisoSelecao] = useState<string | null>(null);
 
-  // Modal do Pacote de Pedidos
-  const [modalPacoteAberto, setModalPacoteAberto] = useState(false);
+  // Modal de Exportação (Pacote de Pedidos ou Resumo de Produção)
+  const [modalExportTipo, setModalExportTipo] = useState<
+    "PACOTE" | "PRODUCAO" | null
+  >(null);
   const [pacoteData, setPacoteData] = useState<PacotePedidosData | null>(null);
-  const [modoPacoteVisualizacao, setModoPacoteVisualizacao] = useState<
-    "A4" | "TEXTO"
-  >("A4");
-  const [gerandoPacotePrint, setGerandoPacotePrint] = useState(false);
-  const [pacotePreviewUrl, setPacotePreviewUrl] = useState<string | null>(null);
-  const [pacotePngBlob, setPacotePngBlob] = useState<Blob | null>(null);
-  const [pacotePdfBlob, setPacotePdfBlob] = useState<Blob | null>(null);
-  const [feedbackPacote, setFeedbackPacote] = useState<string | null>(null);
-  const [erroPacote, setErroPacote] = useState<string | null>(null);
+  const [producaoData, setProducaoData] = useState<ResumoProducaoData | null>(
+    null
+  );
+  const [gerandoExport, setGerandoExport] = useState(false);
+  const [exportPreviewUrls, setExportPreviewUrls] = useState<string[]>([]);
+  const [exportPngBlob, setExportPngBlob] = useState<Blob | null>(null);
+  const [exportPdfBlob, setExportPdfBlob] = useState<Blob | null>(null);
+  const [erroExport, setErroExport] = useState<string | null>(null);
 
   // Filtros
   const [termo, setTermo] = useState("");
@@ -303,120 +310,55 @@ export default function PedidosPage() {
     };
   }, [pedidosSelecionadosLista]);
 
-  // Abertura do Modal de Pacote
-  const abrirModalPacote = async () => {
+  // Abertura do Modal de Exportação (Pacote ou Resumo de Produção)
+  const abrirModalExport = async (tipo: "PACOTE" | "PRODUCAO") => {
     if (pedidosSelecionadosLista.length === 0) return;
-    setFeedbackPacote(null);
-    setErroPacote(null);
-    setGerandoPacotePrint(true);
-    setModalPacoteAberto(true);
+    setErroExport(null);
+    setExportPreviewUrls([]);
+    setExportPngBlob(null);
+    setExportPdfBlob(null);
+    setPacoteData(null);
+    setProducaoData(null);
+    setGerandoExport(true);
+    setModalExportTipo(tipo);
 
     try {
-      const data = compilarDadosPacote(
-        pedidosSelecionadosLista as unknown as PedidoShareData[]
-      );
-      setPacoteData(data);
+      const pedidosShare =
+        pedidosSelecionadosLista as unknown as PedidoShareData[];
 
-      const [pagesCanvas, pngBlob, pdfBlob] = await Promise.all([
-        renderizarPaginasA4PacoteCanvas(data),
-        gerarImagemPrintPacote(data),
-        gerarArquivoPdfPacote(data),
-      ]);
+      if (tipo === "PACOTE") {
+        const data = compilarDadosPacote(pedidosShare);
+        setPacoteData(data);
 
-      setPacotePngBlob(pngBlob);
-      setPacotePdfBlob(pdfBlob);
+        const [pagesCanvas, pngBlob, pdfBlob] = await Promise.all([
+          renderizarPaginasA4PacoteCanvas(data),
+          gerarImagemPrintPacote(data),
+          gerarArquivoPdfPacote(data),
+        ]);
 
-      if (pagesCanvas.length > 0) {
-        setPacotePreviewUrl(pagesCanvas[0].toDataURL("image/png"));
+        setExportPngBlob(pngBlob);
+        setExportPdfBlob(pdfBlob);
+        setExportPreviewUrls(pagesCanvas.map((c) => c.toDataURL("image/png")));
+      } else {
+        const data = compilarDadosResumoProducao(pedidosShare);
+        setProducaoData(data);
+
+        const [pagesCanvas, pngBlob, pdfBlob] = await Promise.all([
+          renderizarPaginasA4ProducaoCanvas(data),
+          gerarImagemPrintProducao(data),
+          gerarArquivoPdfProducao(data),
+        ]);
+
+        setExportPngBlob(pngBlob);
+        setExportPdfBlob(pdfBlob);
+        setExportPreviewUrls(pagesCanvas.map((c) => c.toDataURL("image/png")));
       }
     } catch (err) {
-      setErroPacote(
-        (err as Error).message || "Erro ao processar pacote de pedidos."
+      setErroExport(
+        (err as Error).message || "Erro ao processar resumo dos pedidos."
       );
     } finally {
-      setGerandoPacotePrint(false);
-    }
-  };
-
-  const handleCopiarTextoPacote = async () => {
-    if (!pacoteData) return;
-    setErroPacote(null);
-    try {
-      const texto = gerarTextoWhatsAppPacote(pacoteData);
-      await navigator.clipboard.writeText(texto);
-      setFeedbackPacote("Texto do pacote copiado para a área de transferência!");
-    } catch {
-      setErroPacote("Falha ao copiar texto do pacote.");
-    }
-  };
-
-  const handleCopiarImagemPacote = async () => {
-    if (!pacotePngBlob) return;
-    setErroPacote(null);
-    try {
-      if (
-        typeof navigator !== "undefined" &&
-        navigator.clipboard &&
-        typeof ClipboardItem !== "undefined"
-      ) {
-        await navigator.clipboard.write([
-          new ClipboardItem({ "image/png": pacotePngBlob }),
-        ]);
-        setFeedbackPacote(
-          "Imagem do pacote copiada! Abra o WhatsApp e aperte Ctrl+V."
-        );
-      } else {
-        throw new Error(
-          "Cópia direta não suportada. Use 'Baixar PDF' ou 'Baixar Imagem'."
-        );
-      }
-    } catch (err) {
-      setErroPacote((err as Error).message);
-    }
-  };
-
-  const handleBaixarPdfPacote = async () => {
-    if (!pacoteData) return;
-    setErroPacote(null);
-    try {
-      const blob = pacotePdfBlob || (await gerarArquivoPdfPacote(pacoteData));
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = gerarNomeArquivoPacote(
-        pacoteData.frigorificoNome,
-        "pdf"
-      );
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      setTimeout(() => URL.revokeObjectURL(url), 3000);
-      setFeedbackPacote("Download do PDF do pacote iniciado!");
-    } catch (err) {
-      setErroPacote((err as Error).message);
-    }
-  };
-
-  const handleBaixarImagemPacote = () => {
-    if (!pacotePngBlob || !pacoteData) return;
-    const url = URL.createObjectURL(pacotePngBlob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = gerarNomeArquivoPacote(pacoteData.frigorificoNome, "png");
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    setTimeout(() => URL.revokeObjectURL(url), 3000);
-    setFeedbackPacote("Download da imagem do pacote iniciado!");
-  };
-
-  const handleImprimirPacoteA4 = () => {
-    if (!pacoteData) return;
-    try {
-      imprimirPacoteEmPapel(pacoteData);
-      setFeedbackPacote("Janela de impressão A4 aberta!");
-    } catch (err) {
-      setErroPacote((err as Error).message);
+      setGerandoExport(false);
     }
   };
 
@@ -928,16 +870,16 @@ export default function PedidosPage() {
         )}
       </div>
 
-      {/* Barra Flutuante de Ação em Lote (Pacote de Pedidos) */}
+      {/* Barra Flutuante de Ação em Lote (Pacote de Pedidos / Produção) */}
       {selecionados.size > 0 && (
-        <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-40 max-w-2xl w-full px-4">
+        <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-40 max-w-3xl w-full px-4">
           <div className="bg-slate-900 text-white rounded-2xl shadow-2xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border border-slate-800">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center shrink-0">
                 <Package className="w-5 h-5 text-white" />
               </div>
               <div>
-                <div className="text-sm font-bold flex items-center gap-2">
+                <div className="text-sm font-bold flex items-center gap-2 flex-wrap">
                   <span>
                     {totaisSelecionados.qtd}{" "}
                     {totaisSelecionados.qtd === 1
@@ -968,7 +910,7 @@ export default function PedidosPage() {
               </div>
             </div>
 
-            <div className="flex items-center gap-2 self-end sm:self-auto">
+            <div className="flex items-center flex-wrap gap-2 self-end sm:self-auto">
               <button
                 type="button"
                 onClick={() => {
@@ -981,7 +923,15 @@ export default function PedidosPage() {
               </button>
               <button
                 type="button"
-                onClick={abrirModalPacote}
+                onClick={() => abrirModalExport("PRODUCAO")}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold rounded-xl shadow-xs transition cursor-pointer"
+              >
+                <ClipboardList className="w-3.5 h-3.5" />
+                <span>Resumo Produção</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => abrirModalExport("PACOTE")}
                 className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl shadow-xs transition cursor-pointer"
               >
                 <Share2 className="w-3.5 h-3.5" />
@@ -992,172 +942,95 @@ export default function PedidosPage() {
         </div>
       )}
 
-      {/* Modal de Pacote de Pedidos Consolidado */}
-      {modalPacoteAberto && pacoteData && (
-        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-2xl max-w-4xl w-full p-5 sm:p-6 shadow-2xl space-y-4 my-8 max-h-[92vh] flex flex-col">
-            {/* Cabeçalho */}
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-slate-100 pb-3 shrink-0">
-              <div className="flex items-center gap-2.5">
-                <div className="w-10 h-10 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-600 shrink-0">
-                  <Package className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="text-base font-bold text-slate-900">
-                    Pacote de Pedidos &bull; {pacoteData.frigorificoNome}
-                  </h3>
-                  <p className="text-xs text-slate-500">
-                    {pacoteData.pedidos.length} pedidos agrupados &bull; Total:{" "}
-                    <strong>{formatCurrency(pacoteData.totalGeralValor)}</strong>
-                    {pacoteData.totalGeralPesoKg > 0 ? (
-                      <span>
-                        {" "}
-                        &bull; Peso:{" "}
-                        <strong>
-                          {formatQuantity(pacoteData.totalGeralPesoKg, "kg")}
-                        </strong>
-                      </span>
-                    ) : null}
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <div className="inline-flex rounded-xl bg-slate-100 p-1 text-xs font-semibold">
-                  <button
-                    type="button"
-                    onClick={() => setModoPacoteVisualizacao("A4")}
-                    className={`px-3 py-1.5 rounded-lg transition cursor-pointer ${
-                      modoPacoteVisualizacao === "A4"
-                        ? "bg-white text-slate-900 shadow-xs font-bold"
-                        : "text-slate-600 hover:text-slate-900"
-                    }`}
-                  >
-                    Documento A4
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setModoPacoteVisualizacao("TEXTO")}
-                    className={`px-3 py-1.5 rounded-lg transition cursor-pointer ${
-                      modoPacoteVisualizacao === "TEXTO"
-                        ? "bg-white text-emerald-700 shadow-xs font-bold"
-                        : "text-slate-600 hover:text-slate-900"
-                    }`}
-                  >
-                    Texto WhatsApp
-                  </button>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => setModalPacoteAberto(false)}
-                  className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition cursor-pointer"
-                  title="Fechar"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-            </div>
-
-            {/* Ações Rápidas */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 shrink-0">
-              <button
-                type="button"
-                onClick={handleCopiarTextoPacote}
-                className="flex items-center justify-center gap-2 py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-xs transition cursor-pointer"
-              >
-                <Copy className="w-4 h-4 shrink-0" />
-                <span>Copiar Texto (WhatsApp)</span>
-              </button>
-
-              <button
-                type="button"
-                disabled={gerandoPacotePrint}
-                onClick={handleBaixarPdfPacote}
-                className="flex items-center justify-center gap-2 py-2.5 px-4 bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white text-xs font-bold rounded-xl shadow-xs transition cursor-pointer"
-              >
-                <Download className="w-4 h-4 shrink-0" />
-                <span>Baixar PDF (A4)</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={handleImprimirPacoteA4}
-                className="flex items-center justify-center gap-2 py-2.5 px-4 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-xs transition cursor-pointer"
-              >
-                <Printer className="w-4 h-4 shrink-0" />
-                <span>Imprimir Folha A4</span>
-              </button>
-
-              <button
-                type="button"
-                disabled={gerandoPacotePrint || !pacotePngBlob}
-                onClick={handleCopiarImagemPacote}
-                className="flex items-center justify-center gap-2 py-2.5 px-4 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 text-slate-700 text-xs font-semibold rounded-xl border border-slate-200 transition cursor-pointer"
-              >
-                <ImageIcon className="w-4 h-4 shrink-0" />
-                <span>Copiar Print PNG</span>
-              </button>
-            </div>
-
-            {/* Avisos */}
-            {feedbackPacote && (
-              <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 px-3.5 py-2.5 rounded-xl text-xs font-semibold flex items-center gap-2 shrink-0">
-                <Check className="w-4 h-4 text-emerald-600 shrink-0" />
-                <span>{feedbackPacote}</span>
-              </div>
-            )}
-
-            {erroPacote && (
-              <div className="bg-red-50 border border-red-200 text-red-700 px-3.5 py-2.5 rounded-xl text-xs font-semibold flex items-center gap-2 shrink-0">
-                <AlertTriangle className="w-4 h-4 text-red-600 shrink-0" />
-                <span>{erroPacote}</span>
-              </div>
-            )}
-
-            {/* Pré-visualização */}
-            <div className="flex-1 overflow-y-auto bg-slate-100 border border-slate-200 rounded-xl p-3 flex items-center justify-center min-h-[300px]">
-              {gerandoPacotePrint ? (
-                <div className="py-12 text-center text-slate-500 text-xs space-y-2">
-                  <RefreshCw className="w-7 h-7 text-slate-400 mx-auto animate-spin" />
-                  <p className="font-semibold">
-                    Consolidando pedidos e renderizando documento do pacote...
-                  </p>
-                </div>
-              ) : modoPacoteVisualizacao === "TEXTO" ? (
-                <div className="w-full h-full bg-white p-4 rounded-lg font-mono text-xs whitespace-pre-wrap text-slate-800 border border-slate-200 overflow-y-auto max-h-[460px]">
-                  {gerarTextoWhatsAppPacote(pacoteData)}
-                </div>
-              ) : pacotePreviewUrl ? (
-                /* eslint-disable-next-line @next/next/no-img-element */
-                <img
-                  src={pacotePreviewUrl}
-                  alt="Pré-visualização do Pacote de Pedidos"
-                  className="max-w-full h-auto rounded-sm shadow-md border border-slate-300 bg-white"
-                />
-              ) : (
-                <div className="py-12 text-center text-slate-400 text-xs">
-                  Não foi possível exibir a pré-visualização.
-                </div>
-              )}
-            </div>
-
-            {/* Rodapé */}
-            <div className="flex items-center justify-between pt-1 shrink-0 text-[11px] text-slate-400">
-              <span>
-                Dica: Você pode copiar o texto direto para o WhatsApp do
-                frigorífico ou baixar o arquivo PDF formal.
-              </span>
-              <button
-                type="button"
-                onClick={() => setModalPacoteAberto(false)}
-                className="px-4 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg transition cursor-pointer"
-              >
-                Fechar
-              </button>
-            </div>
-          </div>
-        </div>
+      {/* Modal Consolidado (Pacote de Pedidos ou Resumo de Produção) */}
+      {modalExportTipo !== null && (
+        <PacoteExportModal
+          key={modalExportTipo}
+          open={true}
+          onClose={() => setModalExportTipo(null)}
+          tipo={modalExportTipo}
+        titulo={
+          modalExportTipo === "PRODUCAO"
+            ? `Resumo de Produção • ${
+                producaoData?.frigorificoNome ||
+                frigorificoSelecionado?.nomeFantasia ||
+                ""
+              }`
+            : `Pacote de Pedidos • ${
+                pacoteData?.frigorificoNome ||
+                frigorificoSelecionado?.nomeFantasia ||
+                ""
+              }`
+        }
+        subtitulo={
+          modalExportTipo === "PRODUCAO" && producaoData ? (
+            <>
+              {producaoData.totalPedidos}{" "}
+              {producaoData.totalPedidos === 1 ? "pedido" : "pedidos"} &bull;{" "}
+              {producaoData.itens.length}{" "}
+              {producaoData.itens.length === 1 ? "produto" : "produtos"} &bull;
+              Peso Total:{" "}
+              <strong>
+                {formatQuantity(producaoData.totalPesoKg, "kg")}
+              </strong>
+            </>
+          ) : pacoteData ? (
+            <>
+              {pacoteData.pedidos.length} pedidos agrupados &bull; Total:{" "}
+              <strong>{formatCurrency(pacoteData.totalGeralValor)}</strong>
+              {pacoteData.totalGeralPesoKg > 0 ? (
+                <span>
+                  {" "}
+                  &bull; Peso:{" "}
+                  <strong>
+                    {formatQuantity(pacoteData.totalGeralPesoKg, "kg")}
+                  </strong>
+                </span>
+              ) : null}
+            </>
+          ) : (
+            "Processando dados..."
+          )
+        }
+        dicaRodape={
+          modalExportTipo === "PRODUCAO"
+            ? "Dica: Relatório consolidado sem valores financeiros, ideal para envio à produção e separação."
+            : "Dica: Você pode copiar o texto direto para o WhatsApp do frigorífico ou baixar o arquivo PDF formal."
+        }
+        loading={gerandoExport}
+        erroGeracao={erroExport}
+        textoWhatsApp={
+          modalExportTipo === "PRODUCAO" && producaoData
+            ? gerarTextoWhatsAppProducao(producaoData)
+            : pacoteData
+            ? gerarTextoWhatsAppPacote(pacoteData)
+            : ""
+        }
+        previewUrls={exportPreviewUrls}
+        pngBlob={exportPngBlob}
+        pdfBlob={exportPdfBlob}
+        nomeArquivoPdf={
+          modalExportTipo === "PRODUCAO" && producaoData
+            ? gerarNomeArquivoProducao(producaoData.frigorificoNome, "pdf")
+            : pacoteData
+            ? gerarNomeArquivoPacote(pacoteData.frigorificoNome, "pdf")
+            : "relatorio.pdf"
+        }
+        nomeArquivoPng={
+          modalExportTipo === "PRODUCAO" && producaoData
+            ? gerarNomeArquivoProducao(producaoData.frigorificoNome, "png")
+            : pacoteData
+            ? gerarNomeArquivoPacote(pacoteData.frigorificoNome, "png")
+            : "relatorio.png"
+        }
+          onImprimirA4={() => {
+            if (modalExportTipo === "PRODUCAO" && producaoData) {
+              imprimirResumoProducaoEmPapel(producaoData);
+            } else if (pacoteData) {
+              imprimirPacoteEmPapel(pacoteData);
+            }
+          }}
+        />
       )}
     </div>
   );
