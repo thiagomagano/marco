@@ -68,6 +68,7 @@ model Cliente {
   cidade               String?
   cep                  String?
   observacoes          String?
+  buscaTexto           String?
   ativo                Boolean   @default(true)
   createdAt            DateTime  @default(now())
   updatedAt            DateTime  @updatedAt
@@ -78,6 +79,8 @@ model Cliente {
   pedidos              Pedido[]
 
   @@index([vendedorId])
+  @@index([ativo, razaoSocialOuNome])
+  @@index([vendedorId, ativo, razaoSocialOuNome])
 }
 
 model Vendedor {

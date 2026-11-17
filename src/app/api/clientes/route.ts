@@ -2,57 +2,73 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db.ts";
 import { requireAuth } from "@/lib/session.ts";
 import { isValidCnpj, normalizeCnpj, formatCnpj } from "@/lib/cnpj.ts";
-import {
-  normalizeInscricaoEstadual,
-  parseInscricaoEstadualInput,
-} from "@/lib/inscricao-estadual.ts";
+import { parseInscricaoEstadualInput } from "@/lib/inscricao-estadual.ts";
 import {
   normalizePrazoPagamentoBoleto,
   PRAZO_PAGAMENTO_DEFAULT,
 } from "@/lib/prazo-pagamento.ts";
+import {
+  buildClienteBuscaTexto,
+  buildClienteWhere,
+} from "@/lib/cliente-search.ts";
+import { ensureClientesBuscaTextoBackfilled } from "@/lib/cliente-backfill.ts";
+
+const DEFAULT_PAGE_SIZE = 50;
+const MAX_PAGE_SIZE = 200;
 
 export async function GET(request: Request) {
   try {
     await requireAuth();
+    await ensureClientesBuscaTextoBackfilled();
+
     const { searchParams } = new URL(request.url);
-    const apenasAtivos = searchParams.get("ativos") === "true";
+    const ativosParam = searchParams.get("ativos");
+    const ativos =
+      ativosParam === "true" ? true : ativosParam === "false" ? false : null;
     const busca = searchParams.get("busca")?.trim();
     const vendedorId = searchParams.get("vendedorId")?.trim();
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const where: any = {};
-    if (apenasAtivos) where.ativo = true;
-    if (vendedorId) where.vendedorId = vendedorId;
-    if (busca) {
-      where.OR = [
-        { razaoSocialOuNome: { contains: busca } },
-        { nomeFantasia: { contains: busca } },
-        { cnpjNormalized: { contains: normalizeCnpj(busca) || busca } },
-        {
-          inscricaoEstadual: {
-            contains: normalizeInscricaoEstadual(busca) || busca,
+    const pageRaw = Number.parseInt(searchParams.get("page") || "1", 10);
+    const limitRaw = Number.parseInt(
+      searchParams.get("limit") || String(DEFAULT_PAGE_SIZE),
+      10
+    );
+    const page = Number.isFinite(pageRaw) && pageRaw >= 1 ? pageRaw : 1;
+    const limit = Number.isFinite(limitRaw)
+      ? Math.min(Math.max(limitRaw, 1), MAX_PAGE_SIZE)
+      : DEFAULT_PAGE_SIZE;
+
+    const where = buildClienteWhere({ busca, vendedorId, ativos });
+
+    const [clientes, total] = await Promise.all([
+      prisma.cliente.findMany({
+        where,
+        orderBy: [{ razaoSocialOuNome: "asc" }, { id: "asc" }],
+        skip: (page - 1) * limit,
+        take: limit,
+        include: {
+          vendedor: {
+            select: { id: true, nome: true },
+          },
+          _count: {
+            select: { pedidos: true },
           },
         },
-        { prazoPagamentoBoleto: { contains: busca } },
-        { cidade: { contains: busca } },
-        { bairro: { contains: busca } },
-      ];
-    }
+      }),
+      prisma.cliente.count({ where }),
+    ]);
 
-    const clientes = await prisma.cliente.findMany({
-      where,
-      orderBy: { razaoSocialOuNome: "asc" },
-      include: {
-        vendedor: {
-          select: { id: true, nome: true },
-        },
-        _count: {
-          select: { pedidos: true },
-        },
+    const totalPages = Math.max(1, Math.ceil(total / limit));
+
+    return NextResponse.json({
+      clientes,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages,
       },
     });
-
-    return NextResponse.json(clientes);
   } catch (error) {
     return NextResponse.json(
       { error: (error as Error).message || "Erro ao consultar clientes." },
@@ -158,10 +174,14 @@ export async function POST(request: Request) {
       },
     });
 
+    const nomeFantasiaLimpo = nomeFantasia?.trim() || null;
+    const cidadeLimpa = cidade?.trim() || null;
+    const bairroLimpo = bairro?.trim() || null;
+
     const cliente = await prisma.cliente.create({
       data: {
         razaoSocialOuNome: nomeLimpo,
-        nomeFantasia: nomeFantasia?.trim() || null,
+        nomeFantasia: nomeFantasiaLimpo,
         cnpj: formattedCnpj,
         cnpjNormalized: normalizedCnpj,
         inscricaoEstadual: ieParsed.normalized,
@@ -170,10 +190,19 @@ export async function POST(request: Request) {
         telefone: telefone?.trim() || null,
         email: email?.trim() || null,
         endereco: endereco?.trim() || null,
-        bairro: bairro?.trim() || null,
-        cidade: cidade?.trim() || null,
+        bairro: bairroLimpo,
+        cidade: cidadeLimpa,
         cep: cep?.trim() || null,
         observacoes: observacoes?.trim() || null,
+        buscaTexto: buildClienteBuscaTexto({
+          razaoSocialOuNome: nomeLimpo,
+          nomeFantasia: nomeFantasiaLimpo,
+          cnpjNormalized: normalizedCnpj,
+          inscricaoEstadual: ieParsed.normalized,
+          prazoPagamentoBoleto: prazoParsed.value,
+          cidade: cidadeLimpa,
+          bairro: bairroLimpo,
+        }),
         ativo: true,
       },
       include: {

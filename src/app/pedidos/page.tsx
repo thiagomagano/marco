@@ -41,6 +41,10 @@ import {
   renderizarPaginasA4ProducaoCanvas,
 } from "@/lib/pacote-producao.ts";
 import { PacoteExportModal } from "@/components/pedidos/PacoteExportModal.tsx";
+import {
+  ClienteCombobox,
+  type ClienteResumo,
+} from "@/components/clientes/ClienteCombobox.tsx";
 
 interface PedidoListItem {
   id: string;
@@ -131,29 +135,21 @@ export default function PedidosPage() {
   const [frigorificos, setFrigorificos] = useState<
     Array<{ id: string; nomeFantasia: string }>
   >([]);
-  const [clientes, setClientes] = useState<
-    Array<{
-      id: string;
-      razaoSocialOuNome: string;
-      nomeFantasia: string | null;
-      vendedorId?: string | null;
-    }>
-  >([]);
+  const [selectedClienteFiltro, setSelectedClienteFiltro] =
+    useState<ClienteResumo | null>(null);
   const [vendedores, setVendedores] = useState<
     Array<{ id: string; nome: string }>
   >([]);
 
-  // Carrega opções dos filtros
+  // Carrega opções dos filtros (sem carregar os milhares de clientes antecipadamente)
   useEffect(() => {
     async function carregarAuxiliares() {
       try {
-        const [fRes, cRes, vRes] = await Promise.all([
+        const [fRes, vRes] = await Promise.all([
           fetch("/api/frigorificos"),
-          fetch("/api/clientes"),
           fetch("/api/vendedores"),
         ]);
         if (fRes.ok) setFrigorificos(await fRes.json());
-        if (cRes.ok) setClientes(await cRes.json());
         if (vRes.ok) setVendedores(await vRes.json());
       } catch (e) {
         console.error("Erro ao carregar filtros auxiliares:", e);
@@ -205,6 +201,7 @@ export default function PedidosPage() {
     setDataFim("");
     setFrigorificoId("");
     setClienteId("");
+    setSelectedClienteFiltro(null);
     setVendedorId("");
     setStatus("TODOS");
   };
@@ -447,11 +444,14 @@ export default function PedidosPage() {
               onChange={(e) => {
                 const novoVend = e.target.value;
                 setVendedorId(novoVend);
-                if (clienteId && novoVend) {
-                  const c = clientes.find((cli) => cli.id === clienteId);
-                  if (c && c.vendedorId && c.vendedorId !== novoVend) {
-                    setClienteId("");
-                  }
+                if (
+                  clienteId &&
+                  novoVend &&
+                  selectedClienteFiltro?.vendedorId &&
+                  selectedClienteFiltro.vendedorId !== novoVend
+                ) {
+                  setClienteId("");
+                  setSelectedClienteFiltro(null);
                 }
               }}
               className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-blue-500"
@@ -470,25 +470,23 @@ export default function PedidosPage() {
             <label className="block text-xs font-semibold text-slate-600 mb-1">
               Cliente
             </label>
-            <select
+            <ClienteCombobox
+              size="sm"
+              ativosOnly={false}
+              vendedorId={vendedorId}
               value={clienteId}
-              onChange={(e) => setClienteId(e.target.value)}
-              className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="">
-                {vendedorId
+              selectedCliente={selectedClienteFiltro}
+              emptyOptionLabel={
+                vendedorId
                   ? "Todos os Clientes deste Vendedor"
-                  : "Todos os Clientes"}
-              </option>
-              {(vendedorId
-                ? clientes.filter((c) => c.vendedorId === vendedorId)
-                : clientes
-              ).map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.nomeFantasia || c.razaoSocialOuNome}
-                </option>
-              ))}
-            </select>
+                  : "Todos os Clientes"
+              }
+              placeholder="Buscar cliente..."
+              onChange={(c) => {
+                setSelectedClienteFiltro(c);
+                setClienteId(c?.id || "");
+              }}
+            />
           </div>
 
           {/* Status */}

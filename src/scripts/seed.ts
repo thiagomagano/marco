@@ -1,5 +1,6 @@
 import { prisma } from "../lib/db.ts";
 import { hashPassword } from "../lib/auth.ts";
+import { buildClienteBuscaTexto } from "../lib/cliente-search.ts";
 
 async function main() {
   console.log("Iniciando seed do banco de dados...");
@@ -192,6 +193,11 @@ async function main() {
     where: { cnpjNormalized: "11222333000181" },
     update: {
       vendedorId: vendedor1.id,
+      buscaTexto: buildClienteBuscaTexto({
+        razaoSocialOuNome: "Supermercado Progresso da Serra Ltda",
+        nomeFantasia: "Supermercado Progresso",
+        cnpjNormalized: "11222333000181",
+      }),
     },
     create: {
       razaoSocialOuNome: "Supermercado Progresso da Serra Ltda",
@@ -202,6 +208,11 @@ async function main() {
       email: "compras@progresso.com.br",
       endereco: "Av. Central, 1200 - Centro",
       observacoes: "Recebe cargas até as 11h.",
+      buscaTexto: buildClienteBuscaTexto({
+        razaoSocialOuNome: "Supermercado Progresso da Serra Ltda",
+        nomeFantasia: "Supermercado Progresso",
+        cnpjNormalized: "11222333000181",
+      }),
       vendedorId: vendedor1.id,
       ativo: true,
     },
@@ -211,6 +222,11 @@ async function main() {
     where: { cnpjNormalized: "22333444000122" },
     update: {
       vendedorId: vendedor2.id,
+      buscaTexto: buildClienteBuscaTexto({
+        razaoSocialOuNome: "Churrascaria Fogo de Chão & Brasa Eireli",
+        nomeFantasia: "Churrascaria Fogo Nobre",
+        cnpjNormalized: "22333444000122",
+      }),
     },
     create: {
       razaoSocialOuNome: "Churrascaria Fogo de Chão & Brasa Eireli",
@@ -220,6 +236,11 @@ async function main() {
       telefone: "(11) 97654-3210",
       email: "financeiro@fogonobre.com.br",
       endereco: "Rua das Oliveiras, 45",
+      buscaTexto: buildClienteBuscaTexto({
+        razaoSocialOuNome: "Churrascaria Fogo de Chão & Brasa Eireli",
+        nomeFantasia: "Churrascaria Fogo Nobre",
+        cnpjNormalized: "22333444000122",
+      }),
       vendedorId: vendedor2.id,
       ativo: true,
     },
@@ -237,6 +258,10 @@ async function main() {
         telefone: "(11) 98888-7777",
         endereco: "Rua do Comércio, 310",
         observacoes: "Cliente tradicional, pagamento semanal.",
+        buscaTexto: buildClienteBuscaTexto({
+          razaoSocialOuNome: "Açougue e Boutique do Bairro",
+          nomeFantasia: "Açougue do Bairro",
+        }),
         vendedorId: vendedor1.id,
         ativo: true,
       },
@@ -244,7 +269,18 @@ async function main() {
   } else {
     await prisma.cliente.update({
       where: { id: cliente3.id },
-      data: { vendedorId: vendedor1.id },
+      data: {
+        vendedorId: vendedor1.id,
+        buscaTexto: buildClienteBuscaTexto({
+          razaoSocialOuNome: cliente3.razaoSocialOuNome,
+          nomeFantasia: cliente3.nomeFantasia,
+          cnpjNormalized: cliente3.cnpjNormalized,
+          inscricaoEstadual: cliente3.inscricaoEstadual,
+          prazoPagamentoBoleto: cliente3.prazoPagamentoBoleto,
+          cidade: cliente3.cidade,
+          bairro: cliente3.bairro,
+        }),
+      },
     });
   }
 
