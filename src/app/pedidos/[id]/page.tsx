@@ -21,9 +21,13 @@ import {
   Check,
   Image as ImageIcon,
   X,
+  CalendarClock,
+  CalendarCheck2,
 } from "lucide-react";
 import { formatCurrency, formatQuantity } from "@/lib/money.ts";
 import { formatInscricaoEstadual } from "@/lib/inscricao-estadual.ts";
+import { formatCalendarDateBr } from "@/lib/date-utils.ts";
+import { resolverPrazoBoletoPedido } from "@/lib/prazo-pagamento.ts";
 import {
   gerarImagemPrintPedido,
   gerarNomeArquivoPrint,
@@ -56,6 +60,9 @@ interface PedidoDetalhes {
   dataCriacao: string;
   dataConfirmacao: string | null;
   dataCancelamento: string | null;
+  dataEmbarque?: string | null;
+  dataEntregaPrevista?: string | null;
+  prazoPagamentoBoleto?: string | null;
   frigorifico: {
     nomeFantasia: string;
     cnpj: string | null;
@@ -417,6 +424,10 @@ export default function DetalhesPedidoPage({
       : pedido.status === "RASCUNHO"
       ? "bg-amber-50 text-amber-800 border-amber-200"
       : "bg-red-50 text-red-800 border-red-200";
+  const prazoBoletoEfetivo = resolverPrazoBoletoPedido(
+    pedido.prazoPagamentoBoleto,
+    pedido.cliente.prazoPagamentoBoleto
+  );
 
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
@@ -534,6 +545,27 @@ export default function DetalhesPedidoPage({
                 </span>
               )}
             </div>
+            {(pedido.dataEmbarque || pedido.dataEntregaPrevista) && (
+              <div className="mt-2.5 flex flex-wrap items-center gap-2 text-xs">
+                {pedido.dataEmbarque && (
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-blue-50 text-blue-800 border border-blue-200 font-semibold">
+                    <CalendarClock className="w-3.5 h-3.5 text-blue-600" />
+                    <span>
+                      Embarque: {formatCalendarDateBr(pedido.dataEmbarque)}
+                    </span>
+                  </span>
+                )}
+                {pedido.dataEntregaPrevista && (
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100 text-slate-800 border border-slate-200 font-semibold">
+                    <CalendarCheck2 className="w-3.5 h-3.5 text-slate-600" />
+                    <span>
+                      Entrega Prevista:{" "}
+                      {formatCalendarDateBr(pedido.dataEntregaPrevista)}
+                    </span>
+                  </span>
+                )}
+              </div>
+            )}
           </div>
 
           <div className="text-left sm:text-right">
@@ -599,12 +631,12 @@ export default function DetalhesPedidoPage({
                 IE: {formatInscricaoEstadual(pedido.cliente.inscricaoEstadual)}
               </div>
             )}
-            {pedido.cliente.prazoPagamentoBoleto && (
+            {prazoBoletoEfetivo && (
               <div className="text-slate-500">
                 <span className="font-semibold text-slate-700">
                   Prazo Boleto:{" "}
                 </span>
-                {pedido.cliente.prazoPagamentoBoleto}
+                {prazoBoletoEfetivo}
               </div>
             )}
             {pedido.cliente.email && (

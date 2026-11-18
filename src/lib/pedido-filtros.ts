@@ -25,27 +25,60 @@ export interface PedidoParaOrdenacao {
   dataConfirmacao: Date | string | null;
 }
 
-/**
- * Constrói a cláusula de período para o Prisma considerando:
- * - Pedidos CONFIRMADO: filtrados por dataConfirmacao
- * - Pedidos RASCUNHO / CANCELADO: filtrados por dataCriacao
- * - Status TODOS: OR combinando os dois critérios
- */
-export function buildPedidoDateFilter(params: {
-  status?: string | null;
-  dataInicio?: string | null;
-  dataFim?: string | null;
-}): Record<string, unknown> {
-  const gte = parseSaoPauloDateStart(params.dataInicio);
-  const lte = parseSaoPauloDateEnd(params.dataFim);
+export type PedidoFiltroTipoData = "PADRAO" | "EMBARQUE" | "ENTREGA";
+
+export function parsePedidoFiltroTipoData(
+  value?: string | null
+): PedidoFiltroTipoData {
+  const norm = value?.trim().toUpperCase();
+  if (norm === "EMBARQUE" || norm === "ENTREGA") return norm;
+  return "PADRAO";
+}
+
+function buildDateRange(
+  dataInicio?: string | null,
+  dataFim?: string | null
+): { gte?: Date; lte?: Date } | null {
+  const gte = parseSaoPauloDateStart(dataInicio);
+  const lte = parseSaoPauloDateEnd(dataFim);
 
   if (!gte && !lte) {
-    return {};
+    return null;
   }
 
   const range: { gte?: Date; lte?: Date } = {};
   if (gte) range.gte = gte;
   if (lte) range.lte = lte;
+  return range;
+}
+
+/**
+ * Constrói a cláusula de período para o Prisma considerando `tipoData`:
+ * - PADRAO:
+ *   - Pedidos CONFIRMADO: filtrados por dataConfirmacao
+ *   - Pedidos RASCUNHO / CANCELADO: filtrados por dataCriacao
+ *   - Status TODOS: OR combinando os dois critérios
+ * - EMBARQUE: filtrados por dataEmbarque
+ * - ENTREGA: filtrados por dataEntregaPrevista
+ */
+export function buildPedidoDateFilter(params: {
+  status?: string | null;
+  dataInicio?: string | null;
+  dataFim?: string | null;
+  tipoData?: string | null;
+}): Record<string, unknown> {
+  const range = buildDateRange(params.dataInicio, params.dataFim);
+  if (!range) {
+    return {};
+  }
+
+  const tipoData = parsePedidoFiltroTipoData(params.tipoData);
+  if (tipoData === "EMBARQUE") {
+    return { dataEmbarque: range };
+  }
+  if (tipoData === "ENTREGA") {
+    return { dataEntregaPrevista: range };
+  }
 
   const status = params.status?.trim();
 

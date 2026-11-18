@@ -30,6 +30,11 @@ import {
   ClienteCombobox,
   type ClienteResumo,
 } from "@/components/clientes/ClienteCombobox.tsx";
+import { PedidoLogisticaPagamentoFields } from "@/components/pedidos/PedidoLogisticaPagamentoFields.tsx";
+import {
+  calcularDataEntregaPadrao,
+  toYmdString,
+} from "@/lib/date-utils.ts";
 
 interface Frigorifico {
   id: string;
@@ -85,6 +90,11 @@ export default function EditarPedidoPage({
   const [clienteId, setClienteId] = useState("");
   const [vendedorId, setVendedorId] = useState("");
   const [filtrarPorVendedor, setFiltrarPorVendedor] = useState(false);
+  const [dataEmbarque, setDataEmbarque] = useState("");
+  const [dataEntregaPrevista, setDataEntregaPrevista] = useState("");
+  const [entregaManual, setEntregaManual] = useState(false);
+  const [prazoPagamentoBoleto, setPrazoPagamentoBoleto] = useState("");
+  const [prazoManual, setPrazoManual] = useState(false);
   const [observacoes, setObservacoes] = useState("");
   const [itens, setItens] = useState<FormItem[]>([]);
 
@@ -144,6 +154,29 @@ export default function EditarPedidoPage({
               : null,
           });
         }
+        const embYmd = toYmdString(data.dataEmbarque);
+        const entYmd = toYmdString(data.dataEntregaPrevista);
+        setDataEmbarque(embYmd);
+        setDataEntregaPrevista(entYmd);
+        setEntregaManual(
+          Boolean(
+            embYmd &&
+              entYmd &&
+              entYmd !== calcularDataEntregaPadrao(embYmd)
+          )
+        );
+        const prazoInicial =
+          data.prazoPagamentoBoleto ??
+          data.cliente?.prazoPagamentoBoleto ??
+          "";
+        setPrazoPagamentoBoleto(prazoInicial);
+        setPrazoManual(
+          Boolean(
+            data.prazoPagamentoBoleto &&
+              data.cliente?.prazoPagamentoBoleto &&
+              data.prazoPagamentoBoleto !== data.cliente.prazoPagamentoBoleto
+          )
+        );
         setObservacoes(data.observacoes || "");
 
         if (data.itens && Array.isArray(data.itens)) {
@@ -235,7 +268,7 @@ export default function EditarPedidoPage({
     }
   };
 
-  // Troca de cliente e preenchimento automático do vendedor
+  // Troca de cliente e preenchimento automático do vendedor e prazo padrão
   const handleClienteChange = (cliente: ClienteResumo | null) => {
     const novoClienteId = cliente?.id || "";
     if (itens.length > 0 && novoClienteId !== clienteId) {
@@ -246,6 +279,43 @@ export default function EditarPedidoPage({
     if (cliente?.vendedorId && cliente.vendedorId !== vendedorId) {
       setVendedorId(cliente.vendedorId);
     }
+    if (!prazoManual) {
+      setPrazoPagamentoBoleto(cliente?.prazoPagamentoBoleto ?? "");
+    }
+  };
+
+  const handleDataEmbarqueChange = (novaData: string) => {
+    setDataEmbarque(novaData);
+    if (!novaData) {
+      if (!entregaManual) {
+        setDataEntregaPrevista("");
+      }
+      return;
+    }
+    if (!entregaManual || !dataEntregaPrevista) {
+      setDataEntregaPrevista(calcularDataEntregaPadrao(novaData));
+    }
+  };
+
+  const handleDataEntregaChange = (novaData: string) => {
+    setDataEntregaPrevista(novaData);
+    setEntregaManual(Boolean(novaData));
+  };
+
+  const handleAplicarEntregaD1 = () => {
+    if (!dataEmbarque) return;
+    setDataEntregaPrevista(calcularDataEntregaPadrao(dataEmbarque));
+    setEntregaManual(false);
+  };
+
+  const handlePrazoChange = (novoPrazo: string) => {
+    setPrazoPagamentoBoleto(novoPrazo);
+    setPrazoManual(true);
+  };
+
+  const handleRestaurarPrazoCliente = () => {
+    setPrazoPagamentoBoleto(selectedCliente?.prazoPagamentoBoleto ?? "");
+    setPrazoManual(false);
   };
 
   // Adiciona novo item à lista
@@ -348,6 +418,15 @@ export default function EditarPedidoPage({
       }
 
       if (statusDestino === "CONFIRMADO") {
+        if (!dataEmbarque) {
+          throw new Error("Informe a data de embarque/carregamento para confirmar a venda.");
+        }
+        if (!dataEntregaPrevista) {
+          throw new Error("Informe a data da entrega prevista para confirmar a venda.");
+        }
+        if (dataEntregaPrevista < dataEmbarque) {
+          throw new Error("A data da entrega prevista não pode ser anterior à data de embarque/carregamento.");
+        }
         if (itens.length === 0) {
           throw new Error("Adicione pelo menos um item para confirmar a venda.");
         }
@@ -364,6 +443,8 @@ export default function EditarPedidoPage({
             throw new Error(`Informe um preço válido para "${item.nome || "o produto"}".`);
           }
         }
+      } else if (dataEmbarque && dataEntregaPrevista && dataEntregaPrevista < dataEmbarque) {
+        throw new Error("A data da entrega prevista não pode ser anterior à data de embarque/carregamento.");
       }
 
       const payload = {
@@ -371,6 +452,9 @@ export default function EditarPedidoPage({
         clienteId,
         vendedorId,
         status: statusDestino,
+        dataEmbarque: dataEmbarque || null,
+        dataEntregaPrevista: dataEntregaPrevista || null,
+        prazoPagamentoBoleto,
         observacoes,
         itens: itens
           .filter((i) => i.produtoId)
@@ -604,6 +688,20 @@ export default function EditarPedidoPage({
             </p>
           </div>
         </div>
+
+        {/* 1.1 LOGÍSTICA E CONDIÇÃO DE PAGAMENTO */}
+        <PedidoLogisticaPagamentoFields
+          dataEmbarque={dataEmbarque}
+          dataEntregaPrevista={dataEntregaPrevista}
+          entregaManual={entregaManual}
+          prazoPagamentoBoleto={prazoPagamentoBoleto}
+          clientePrazoPadrao={selectedCliente?.prazoPagamentoBoleto}
+          onDataEmbarqueChange={handleDataEmbarqueChange}
+          onDataEntregaChange={handleDataEntregaChange}
+          onAplicarEntregaD1={handleAplicarEntregaD1}
+          onPrazoChange={handlePrazoChange}
+          onRestaurarPrazoCliente={handleRestaurarPrazoCliente}
+        />
 
         {/* 2. ITENS DO PEDIDO */}
         <div className="space-y-4 pt-4 border-t border-slate-100">

@@ -176,4 +176,30 @@ describe("Compartilhamento, Print e PDF A4 Imprimível de Pedido", () => {
     assert(!texto.includes("E-mail Cliente:"));
     assert(!html.includes("E-mail:"));
   });
+
+  it("deve exibir datas de embarque, entrega prevista e prazo do boleto customizado no pedido", () => {
+    const pedidoComLogistica: PedidoShareData = {
+      ...pedidoExemplo,
+      dataEmbarque: "2026-11-20T15:00:00.000Z",
+      dataEntregaPrevista: "2026-11-21T15:00:00.000Z",
+      prazoPagamentoBoleto: "21/28 dias",
+      cliente: {
+        ...pedidoExemplo.cliente,
+        prazoPagamentoBoleto: "14 dias",
+      },
+    };
+
+    const texto = gerarTextoResumoWhatsApp(pedidoComLogistica);
+    const html = gerarHtmlImpressaoA4(pedidoComLogistica);
+
+    assert(texto.includes("Embarque/Carregamento: *20/11/2026*"));
+    assert(texto.includes("Entrega Prevista: *21/11/2026*"));
+    assert(texto.includes("Prazo Boleto: 21/28 dias"));
+    assert(!texto.includes("Prazo Boleto: 14 dias"));
+
+    assert(html.includes("Embarque/Carregamento: 20/11/2026"));
+    assert(html.includes("Entrega Prevista: 21/11/2026"));
+    assert(html.includes("21/28 dias"));
+    assert(!html.includes("14 dias"));
+  });
 });

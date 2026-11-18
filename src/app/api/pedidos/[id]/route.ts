@@ -6,6 +6,7 @@ import {
   calculateOrderTotal,
   calculateReportedWeightKg,
 } from "@/lib/money.ts";
+import { parseAndValidatePedidoLogistica } from "@/lib/pedido-detalhes.ts";
 
 export async function GET(
   _request: Request,
@@ -84,6 +85,16 @@ export async function PATCH(
           justificativaCancelamento: justificativa.trim(),
           dataCancelamento: new Date(),
         },
+        include: {
+          frigorifico: true,
+          cliente: true,
+          vendedor: true,
+          itens: {
+            include: {
+              produto: true,
+            },
+          },
+        },
       });
 
       return NextResponse.json(pedidoCancelado);
@@ -115,6 +126,9 @@ export async function PATCH(
       vendedorId,
       status, // "RASCUNHO" ou "CONFIRMADO"
       observacoes,
+      dataEmbarque,
+      dataEntregaPrevista,
+      prazoPagamentoBoleto,
       itens,
     } = body;
 
@@ -128,6 +142,28 @@ export async function PATCH(
         { error: "Um pedido confirmado precisa conter pelo menos um item." },
         { status: 400 }
       );
+    }
+
+    const clienteAtual = await prisma.cliente.findUnique({
+      where: { id: cId },
+      select: { prazoPagamentoBoleto: true },
+    });
+
+    const logistica = parseAndValidatePedidoLogistica({
+      dataEmbarque,
+      dataEntregaPrevista,
+      prazoPagamentoBoleto,
+      status: isConfirming ? "CONFIRMADO" : "RASCUNHO",
+      fallbackPrazoCliente: clienteAtual?.prazoPagamentoBoleto ?? null,
+      existingDataEmbarque: pedidoExistente.dataEmbarque,
+      existingDataEntregaPrevista: pedidoExistente.dataEntregaPrevista,
+      existingPrazoPagamentoBoleto:
+        cId === pedidoExistente.clienteId
+          ? pedidoExistente.prazoPagamentoBoleto
+          : undefined,
+    });
+    if (!logistica.valid) {
+      return NextResponse.json({ error: logistica.error }, { status: 400 });
     }
 
     // Validação dos produtos no servidor
@@ -218,6 +254,9 @@ export async function PATCH(
           vendedorId: vId,
           status: isConfirming ? "CONFIRMADO" : "RASCUNHO",
           observacoes: observacoes !== undefined ? observacoes : pedidoExistente.observacoes,
+          dataEmbarque: logistica.dataEmbarque,
+          dataEntregaPrevista: logistica.dataEntregaPrevista,
+          prazoPagamentoBoleto: logistica.prazoPagamentoBoleto,
           totalEstimado,
           pesoInformadoKg: pesoInformadoKg > 0 ? pesoInformadoKg : null,
           dataConfirmacao: isConfirming ? new Date() : null,
@@ -235,7 +274,14 @@ export async function PATCH(
           },
         },
         include: {
-          itens: true,
+          frigorifico: true,
+          cliente: true,
+          vendedor: true,
+          itens: {
+            include: {
+              produto: true,
+            },
+          },
         },
       });
     });

@@ -13,6 +13,7 @@ import {
   calcularResumoPedidos,
   getPedidoDataReferenciaMs,
 } from "@/lib/pedido-filtros.ts";
+import { parseAndValidatePedidoLogistica } from "@/lib/pedido-detalhes.ts";
 
 export async function GET(request: Request) {
   try {
@@ -22,6 +23,7 @@ export async function GET(request: Request) {
     const termo = searchParams.get("termo")?.trim();
     const dataInicio = searchParams.get("dataInicio");
     const dataFim = searchParams.get("dataFim");
+    const tipoData = searchParams.get("tipoData");
     const frigorificoId = searchParams.get("frigorificoId");
     const clienteId = searchParams.get("clienteId");
     const vendedorId = searchParams.get("vendedorId");
@@ -55,7 +57,7 @@ export async function GET(request: Request) {
 
     Object.assign(
       where,
-      buildPedidoDateFilter({ status, dataInicio, dataFim })
+      buildPedidoDateFilter({ status, dataInicio, dataFim, tipoData })
     );
 
     const idsParam = searchParams.get("ids");
@@ -157,6 +159,9 @@ export async function POST(request: Request) {
       vendedorId,
       status, // "RASCUNHO" ou "CONFIRMADO"
       observacoes,
+      dataEmbarque,
+      dataEntregaPrevista,
+      prazoPagamentoBoleto,
       itens,
     } = body;
 
@@ -208,6 +213,18 @@ export async function POST(request: Request) {
         { error: "Um pedido confirmado precisa conter pelo menos um item." },
         { status: 400 }
       );
+    }
+
+    // 2.1 Valida datas logísticas (embarque, entrega prevista) e prazo do boleto
+    const logistica = parseAndValidatePedidoLogistica({
+      dataEmbarque,
+      dataEntregaPrevista,
+      prazoPagamentoBoleto,
+      status: status === "CONFIRMADO" ? "CONFIRMADO" : "RASCUNHO",
+      fallbackPrazoCliente: cliente.prazoPagamentoBoleto,
+    });
+    if (!logistica.valid) {
+      return NextResponse.json({ error: logistica.error }, { status: 400 });
     }
 
     // 3. Validação rigorosa dos itens no servidor (garante que TODOS pertencem ao frigorífico selecionado)
@@ -309,6 +326,9 @@ export async function POST(request: Request) {
         vendedorId,
         status: isConfirmed ? "CONFIRMADO" : "RASCUNHO",
         observacoes: observacoes || null,
+        dataEmbarque: logistica.dataEmbarque,
+        dataEntregaPrevista: logistica.dataEntregaPrevista,
+        prazoPagamentoBoleto: logistica.prazoPagamentoBoleto,
         totalEstimado,
         pesoInformadoKg: pesoInformadoKg > 0 ? pesoInformadoKg : null,
         dataConfirmacao: isConfirmed ? new Date() : null,

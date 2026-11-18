@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -11,9 +11,7 @@ import {
   CheckCircle2,
   Info,
   Save,
-  Send,
   Sparkles,
-  RotateCcw,
 } from "lucide-react";
 import {
   calculateSubtotal,
@@ -26,6 +24,11 @@ import {
   ClienteCombobox,
   type ClienteResumo,
 } from "@/components/clientes/ClienteCombobox.tsx";
+import { PedidoLogisticaPagamentoFields } from "@/components/pedidos/PedidoLogisticaPagamentoFields.tsx";
+import {
+  calcularDataEntregaPadrao,
+  getDefaultDatasPedido,
+} from "@/lib/date-utils.ts";
 
 interface Frigorifico {
   id: string;
@@ -74,13 +77,17 @@ export default function NovoPedidoPage() {
   const [clienteId, setClienteId] = useState("");
   const [vendedorId, setVendedorId] = useState("");
   const [filtrarPorVendedor, setFiltrarPorVendedor] = useState(false);
+  const [dataEmbarque, setDataEmbarque] = useState("");
+  const [dataEntregaPrevista, setDataEntregaPrevista] = useState("");
+  const [entregaManual, setEntregaManual] = useState(false);
+  const [prazoPagamentoBoleto, setPrazoPagamentoBoleto] = useState("");
+  const [prazoManual, setPrazoManual] = useState(false);
   const [observacoes, setObservacoes] = useState("");
   const [itens, setItens] = useState<FormItem[]>([]);
 
   // Estados de controle e mensagens
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [modalTrocaFrigorifico, setModalTrocaFrigorifico] = useState<string | null>(null);
   const [avisoTrocaCliente, setAvisoTrocaCliente] = useState(false);
   const [rascunhoRecuperado, setRascunhoRecuperado] = useState(false);
@@ -102,24 +109,47 @@ export default function NovoPedidoPage() {
     loadData();
   }, []);
 
-  // Recupera rascunho salvo no localStorage se existir
+  // Recupera rascunho salvo no localStorage se existir, ou aplica datas padrão Hoje/Amanhã
   useEffect(() => {
-    const saved = localStorage.getItem("marco_draft_order");
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (parsed.frigorificoId || parsed.itens?.length > 0) {
-          setFrigorificoId(parsed.frigorificoId || "");
-          setClienteId(parsed.clienteId || "");
-          setVendedorId(parsed.vendedorId || "");
-          setObservacoes(parsed.observacoes || "");
-          setItens(parsed.itens || []);
-          setRascunhoRecuperado(true);
+    let cancelado = false;
+    async function hidratarFormulario() {
+      await Promise.resolve();
+      if (cancelado) return;
+      const defaults = getDefaultDatasPedido();
+      const saved = localStorage.getItem("marco_draft_order");
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          if (parsed.frigorificoId || parsed.itens?.length > 0) {
+            setFrigorificoId(parsed.frigorificoId || "");
+            setClienteId(parsed.clienteId || "");
+            setVendedorId(parsed.vendedorId || "");
+            setDataEmbarque(parsed.dataEmbarque || defaults.dataEmbarque);
+            setDataEntregaPrevista(
+              parsed.dataEntregaPrevista ||
+                (parsed.dataEmbarque
+                  ? calcularDataEntregaPadrao(parsed.dataEmbarque)
+                  : defaults.dataEntregaPrevista)
+            );
+            setEntregaManual(Boolean(parsed.entregaManual));
+            setPrazoPagamentoBoleto(parsed.prazoPagamentoBoleto || "");
+            setPrazoManual(Boolean(parsed.prazoManual));
+            setObservacoes(parsed.observacoes || "");
+            setItens(parsed.itens || []);
+            setRascunhoRecuperado(true);
+            return;
+          }
+        } catch {
+          // ignora erro de parse
         }
-      } catch {
-        // ignora erro de parse
       }
+      setDataEmbarque(defaults.dataEmbarque);
+      setDataEntregaPrevista(defaults.dataEntregaPrevista);
     }
+    hidratarFormulario();
+    return () => {
+      cancelado = true;
+    };
   }, []);
 
   // Salva rascunho localmente no navegador
@@ -128,31 +158,55 @@ export default function NovoPedidoPage() {
       frigorificoId,
       clienteId,
       vendedorId,
+      dataEmbarque,
+      dataEntregaPrevista,
+      entregaManual,
+      prazoPagamentoBoleto,
+      prazoManual,
       observacoes,
       itens,
     };
     if (frigorificoId || clienteId || itens.length > 0) {
       localStorage.setItem("marco_draft_order", JSON.stringify(draft));
     }
-  }, [frigorificoId, clienteId, vendedorId, observacoes, itens]);
+  }, [
+    frigorificoId,
+    clienteId,
+    vendedorId,
+    dataEmbarque,
+    dataEntregaPrevista,
+    entregaManual,
+    prazoPagamentoBoleto,
+    prazoManual,
+    observacoes,
+    itens,
+  ]);
 
   // Carrega os produtos do frigorífico selecionado
   useEffect(() => {
-    if (!frigorificoId) {
-      setProdutosDisponiveis([]);
-      return;
-    }
+    let cancelado = false;
     async function loadProdutos() {
+      await Promise.resolve();
+      if (cancelado) return;
+      if (!frigorificoId) {
+        setProdutosDisponiveis([]);
+        return;
+      }
       try {
         const res = await fetch(`/api/produtos?frigorificoId=${frigorificoId}&ativos=true`);
-        if (res.ok) {
+        if (res.ok && !cancelado) {
           setProdutosDisponiveis(await res.json());
         }
       } catch (e) {
-        console.error("Erro ao carregar produtos do frigorífico:", e);
+        if (!cancelado) {
+          console.error("Erro ao carregar produtos do frigorífico:", e);
+        }
       }
     }
     loadProdutos();
+    return () => {
+      cancelado = true;
+    };
   }, [frigorificoId]);
 
   // Guarda 5.2.7: Alerta e exige confirmação ao trocar de frigorífico com itens
@@ -190,7 +244,7 @@ export default function NovoPedidoPage() {
     }
   };
 
-  // Guarda 5.2.8: Alerta ao trocar de cliente e preenche vendedor automaticamente
+  // Guarda 5.2.8: Alerta ao trocar de cliente e preenche vendedor e prazo padrão automaticamente
   const handleClienteChange = (cliente: ClienteResumo | null) => {
     const novoClienteId = cliente?.id || "";
     if (itens.length > 0 && novoClienteId !== clienteId) {
@@ -201,6 +255,43 @@ export default function NovoPedidoPage() {
     if (cliente?.vendedorId && cliente.vendedorId !== vendedorId) {
       setVendedorId(cliente.vendedorId);
     }
+    if (!prazoManual) {
+      setPrazoPagamentoBoleto(cliente?.prazoPagamentoBoleto ?? "");
+    }
+  };
+
+  const handleDataEmbarqueChange = (novaData: string) => {
+    setDataEmbarque(novaData);
+    if (!novaData) {
+      if (!entregaManual) {
+        setDataEntregaPrevista("");
+      }
+      return;
+    }
+    if (!entregaManual || !dataEntregaPrevista) {
+      setDataEntregaPrevista(calcularDataEntregaPadrao(novaData));
+    }
+  };
+
+  const handleDataEntregaChange = (novaData: string) => {
+    setDataEntregaPrevista(novaData);
+    setEntregaManual(Boolean(novaData));
+  };
+
+  const handleAplicarEntregaD1 = () => {
+    if (!dataEmbarque) return;
+    setDataEntregaPrevista(calcularDataEntregaPadrao(dataEmbarque));
+    setEntregaManual(false);
+  };
+
+  const handlePrazoChange = (novoPrazo: string) => {
+    setPrazoPagamentoBoleto(novoPrazo);
+    setPrazoManual(true);
+  };
+
+  const handleRestaurarPrazoCliente = () => {
+    setPrazoPagamentoBoleto(selectedCliente?.prazoPagamentoBoleto ?? "");
+    setPrazoManual(false);
   };
 
   // Adiciona novo item vazio à lista
@@ -295,7 +386,6 @@ export default function NovoPedidoPage() {
   // Submissão do pedido (Rascunho ou Confirmado)
   const salvarPedido = async (statusDestino: "RASCUNHO" | "CONFIRMADO") => {
     setError(null);
-    setSuccessMsg(null);
     setLoading(true);
 
     try {
@@ -304,6 +394,15 @@ export default function NovoPedidoPage() {
       }
 
       if (statusDestino === "CONFIRMADO") {
+        if (!dataEmbarque) {
+          throw new Error("Informe a data de embarque/carregamento para confirmar a venda.");
+        }
+        if (!dataEntregaPrevista) {
+          throw new Error("Informe a data da entrega prevista para confirmar a venda.");
+        }
+        if (dataEntregaPrevista < dataEmbarque) {
+          throw new Error("A data da entrega prevista não pode ser anterior à data de embarque/carregamento.");
+        }
         if (itens.length === 0) {
           throw new Error("Adicione pelo menos um item para confirmar a venda.");
         }
@@ -320,6 +419,8 @@ export default function NovoPedidoPage() {
             throw new Error(`Informe um preço válido para "${item.nome || 'o produto'}".`);
           }
         }
+      } else if (dataEmbarque && dataEntregaPrevista && dataEntregaPrevista < dataEmbarque) {
+        throw new Error("A data da entrega prevista não pode ser anterior à data de embarque/carregamento.");
       }
 
       const payload = {
@@ -327,6 +428,9 @@ export default function NovoPedidoPage() {
         clienteId,
         vendedorId,
         status: statusDestino,
+        dataEmbarque: dataEmbarque || null,
+        dataEntregaPrevista: dataEntregaPrevista || null,
+        prazoPagamentoBoleto,
         observacoes,
         itens: itens
           .filter((i) => i.produtoId)
@@ -360,12 +464,18 @@ export default function NovoPedidoPage() {
   };
 
   const descartarRascunho = () => {
+    const defaults = getDefaultDatasPedido();
     localStorage.removeItem("marco_draft_order");
     setFrigorificoId("");
     setClienteId("");
     setSelectedCliente(null);
     setVendedorId("");
     setFiltrarPorVendedor(false);
+    setDataEmbarque(defaults.dataEmbarque);
+    setDataEntregaPrevista(defaults.dataEntregaPrevista);
+    setEntregaManual(false);
+    setPrazoPagamentoBoleto("");
+    setPrazoManual(false);
     setObservacoes("");
     setItens([]);
     setRascunhoRecuperado(false);
@@ -429,7 +539,7 @@ export default function NovoPedidoPage() {
         )}
 
         {/* 1. SELEÇÃO COMERCIAL: Frigorífico, Cliente, Vendedor */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pb-6 border-b border-slate-200">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {/* 1. Frigorífico */}
           <div>
             <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
@@ -494,6 +604,20 @@ export default function NovoPedidoPage() {
             </p>
           </div>
         </div>
+
+        {/* 1.1 LOGÍSTICA E CONDIÇÃO DE PAGAMENTO */}
+        <PedidoLogisticaPagamentoFields
+          dataEmbarque={dataEmbarque}
+          dataEntregaPrevista={dataEntregaPrevista}
+          entregaManual={entregaManual}
+          prazoPagamentoBoleto={prazoPagamentoBoleto}
+          clientePrazoPadrao={selectedCliente?.prazoPagamentoBoleto}
+          onDataEmbarqueChange={handleDataEmbarqueChange}
+          onDataEntregaChange={handleDataEntregaChange}
+          onAplicarEntregaD1={handleAplicarEntregaD1}
+          onPrazoChange={handlePrazoChange}
+          onRestaurarPrazoCliente={handleRestaurarPrazoCliente}
+        />
 
         {/* 2. ITENS DO PEDIDO */}
         <div className="space-y-4">
