@@ -1,5 +1,7 @@
 import { formatCurrency, formatQuantity } from "./money.ts";
 import { formatInscricaoEstadual } from "./inscricao-estadual.ts";
+import { formatCalendarDateBr } from "./date-utils.ts";
+import { resolverPrazoBoletoPedido } from "./prazo-pagamento.ts";
 import {
   BRAND_LOGO_FALLBACK_PATH,
   BRAND_LOGO_PATH,
@@ -30,6 +32,9 @@ export interface PedidoShareData {
   dataCriacao: string;
   dataConfirmacao: string | null;
   dataCancelamento?: string | null;
+  dataEmbarque?: string | null;
+  dataEntregaPrevista?: string | null;
+  prazoPagamentoBoleto?: string | null;
   frigorifico: {
     nomeFantasia: string;
     cnpj: string | null;
@@ -75,14 +80,34 @@ export function formatarEnderecoCliente(
   return partes.join(" • ");
 }
 
+export function getPrazoBoletoEfetivo(
+  pedido: Pick<PedidoShareData, "prazoPagamentoBoleto" | "cliente">
+): string | null {
+  return resolverPrazoBoletoPedido(
+    pedido.prazoPagamentoBoleto,
+    pedido.cliente?.prazoPagamentoBoleto
+  );
+}
+
 export function gerarTextoResumoWhatsApp(pedido: PedidoShareData): string {
   const linhas: string[] = [];
+  const prazoBoleto = getPrazoBoletoEfetivo(pedido);
 
   linhas.push(`*RESUMO DO PEDIDO ${pedido.numero}*`);
   linhas.push(`Status: *${pedido.status}*`);
   linhas.push(
     `Data: ${new Date(pedido.dataCriacao).toLocaleDateString("pt-BR")}`
   );
+  if (pedido.dataEmbarque) {
+    linhas.push(
+      `Embarque/Carregamento: *${formatCalendarDateBr(pedido.dataEmbarque)}*`
+    );
+  }
+  if (pedido.dataEntregaPrevista) {
+    linhas.push(
+      `Entrega Prevista: *${formatCalendarDateBr(pedido.dataEntregaPrevista)}*`
+    );
+  }
   linhas.push("");
 
   linhas.push(`*Frigorífico:* ${pedido.frigorifico.nomeFantasia}`);
@@ -106,8 +131,8 @@ export function gerarTextoResumoWhatsApp(pedido: PedidoShareData): string {
   if (pedido.cliente.inscricaoEstadual) {
     linhas.push(`IE Cliente: ${formatInscricaoEstadual(pedido.cliente.inscricaoEstadual)}`);
   }
-  if (pedido.cliente.prazoPagamentoBoleto) {
-    linhas.push(`Prazo Boleto: ${pedido.cliente.prazoPagamentoBoleto}`);
+  if (prazoBoleto) {
+    linhas.push(`Prazo Boleto: ${prazoBoleto}`);
   }
   const enderecoCompleto = formatarEnderecoCliente(pedido.cliente);
   if (enderecoCompleto) {
@@ -546,13 +571,26 @@ export async function gerarImagemPrintPedido(
     (pedido.frigorifico.cnpj ? 17 : 0) +
     (pedido.frigorifico.telefone ? 17 : 0);
 
+  const prazoBoleto = getPrazoBoletoEfetivo(pedido);
+  const logisticaPartes: string[] = [];
+  if (pedido.dataEmbarque) {
+    logisticaPartes.push(
+      `Embarque: ${formatCalendarDateBr(pedido.dataEmbarque)}`
+    );
+  }
+  if (pedido.dataEntregaPrevista) {
+    logisticaPartes.push(
+      `Entrega Prevista: ${formatCalendarDateBr(pedido.dataEntregaPrevista)}`
+    );
+  }
+
   const col2Height =
     20 +
     clienteNomeLines.length * 18 +
     clienteRazaoLines.length * 16 +
     (pedido.cliente.cnpj ? 17 : 0) +
     (pedido.cliente.inscricaoEstadual ? 17 : 0) +
-    (pedido.cliente.prazoPagamentoBoleto ? 17 : 0) +
+    (prazoBoleto ? 17 : 0) +
     (pedido.cliente.telefone ? 17 : 0) +
     clienteEmailLines.length * 16 +
     clienteEndLines.length * 16;
@@ -609,7 +647,7 @@ export async function gerarImagemPrintPedido(
       : 0;
 
   const letterheadH = 82;
-  const headerSectionH = 104;
+  const headerSectionH = logisticaPartes.length > 0 ? 124 : 104;
   const tableHeaderAreaH = 44 + 36; // Título "Itens do Pedido" + cabeçalho da tabela
   const tableFooterH = 46;
   const cardBottomPad = 44; // Rodapé com data de geração
@@ -754,6 +792,12 @@ export async function gerarImagemPrintPedido(
     : "";
   ctx.fillText(`${dataCriacaoStr}${dataConfStr}`, CONTENT_X, cursorY + 68);
 
+  if (logisticaPartes.length > 0) {
+    ctx.fillStyle = "#1e3a8a";
+    ctx.font = `700 12px ${FONT_FAMILY}`;
+    ctx.fillText(logisticaPartes.join("  •  "), CONTENT_X, cursorY + 90);
+  }
+
   // Lado Direito do Topo: Total Estimado e Peso
   const rightEdge = CONTENT_X + CONTENT_W;
   ctx.textAlign = "right";
@@ -849,9 +893,9 @@ export async function gerarImagemPrintPedido(
     );
     c2Y += 17;
   }
-  if (pedido.cliente.prazoPagamentoBoleto) {
+  if (prazoBoleto) {
     ctx.fillText(
-      `Prazo Boleto: ${pedido.cliente.prazoPagamentoBoleto}`,
+      `Prazo Boleto: ${prazoBoleto}`,
       col2X,
       c2Y
     );
@@ -1139,6 +1183,21 @@ export function gerarHtmlImpressaoA4(pedido: PedidoShareData): string {
     ? new Date(pedido.dataConfirmacao).toLocaleString("pt-BR")
     : null;
   const dataEmissaoPdf = new Date().toLocaleString("pt-BR");
+  const prazoBoleto = getPrazoBoletoEfetivo(pedido);
+  const embarqueStr = pedido.dataEmbarque
+    ? formatCalendarDateBr(pedido.dataEmbarque)
+    : null;
+  const entregaStr = pedido.dataEntregaPrevista
+    ? formatCalendarDateBr(pedido.dataEntregaPrevista)
+    : null;
+  const logisticaHtml =
+    embarqueStr || entregaStr
+      ? `<div class="dates" style="margin-top: 3px; font-weight: bold; color: #000000;">
+          ${embarqueStr ? `Embarque/Carregamento: ${escapeHtml(embarqueStr)}` : ""}
+          ${embarqueStr && entregaStr ? " &bull; " : ""}
+          ${entregaStr ? `Entrega Prevista: ${escapeHtml(entregaStr)}` : ""}
+        </div>`
+      : "";
 
   const linhasItensHtml = pedido.itens
     .map(
@@ -1428,6 +1487,7 @@ export function gerarHtmlImpressaoA4(pedido: PedidoShareData): string {
               : ""
           }
         </div>
+        ${logisticaHtml}
       </div>
 
       <div class="header-totals">
@@ -1495,9 +1555,9 @@ export function gerarHtmlImpressaoA4(pedido: PedidoShareData): string {
               : ""
           }
           ${
-            pedido.cliente.prazoPagamentoBoleto
+            prazoBoleto
               ? `<div class="party-detail"><strong>Prazo Boleto:</strong> ${escapeHtml(
-                  pedido.cliente.prazoPagamentoBoleto
+                  prazoBoleto
                 )}</div>`
               : ""
           }
@@ -1654,6 +1714,19 @@ export async function renderizarPaginasA4Canvas(
     ? wrapTextLines(mCtx, `End.: ${endStr}`, colW - 16)
     : [];
 
+  const prazoBoleto = getPrazoBoletoEfetivo(pedido);
+  const logisticaPartes: string[] = [];
+  if (pedido.dataEmbarque) {
+    logisticaPartes.push(
+      `Embarque: ${formatCalendarDateBr(pedido.dataEmbarque)}`
+    );
+  }
+  if (pedido.dataEntregaPrevista) {
+    logisticaPartes.push(
+      `Entrega Prevista: ${formatCalendarDateBr(pedido.dataEntregaPrevista)}`
+    );
+  }
+
   const p1H =
     26 +
     frigLines.length * 15 +
@@ -1665,7 +1738,7 @@ export async function renderizarPaginasA4Canvas(
     cliRazaoLines.length * 14 +
     (pedido.cliente.cnpj ? 15 : 0) +
     (pedido.cliente.inscricaoEstadual ? 15 : 0) +
-    (pedido.cliente.prazoPagamentoBoleto ? 15 : 0) +
+    (prazoBoleto ? 15 : 0) +
     (pedido.cliente.telefone ? 15 : 0) +
     cliEmailLines.length * 14 +
     cliEndLines.length * 14;
@@ -1699,11 +1772,12 @@ export async function renderizarPaginasA4Canvas(
   const obsBoxH = obsLines.length > 0 ? 30 + obsLines.length * 15 + 10 : 0;
 
   const letterheadH = 72;
+  const headerH = logisticaPartes.length > 0 ? 96 : 82;
   const totalLogicalH =
     MARGIN * 2 +
     letterheadH +
     10 +
-    82 + // Header
+    headerH + // Header
     12 +
     partiesBoxH +
     14 +
@@ -1753,7 +1827,6 @@ export async function renderizarPaginasA4Canvas(
   y += letterheadH + 10;
 
   // 1. Cabeçalho Formal com Borda Preta
-  const headerH = 82;
   ctx.strokeStyle = "#000000";
   ctx.lineWidth = 1.5;
   ctx.strokeRect(x0, y, CONTENT_W, headerH);
@@ -1787,6 +1860,12 @@ export async function renderizarPaginasA4Canvas(
       )}`
     : "";
   ctx.fillText(`${dtCriacao}${dtConf}`, x0 + 12, y + 68);
+
+  if (logisticaPartes.length > 0) {
+    ctx.fillStyle = "#000000";
+    ctx.font = `700 10.5px ${FONT_SANS}`;
+    ctx.fillText(logisticaPartes.join("  •  "), x0 + 12, y + 84);
+  }
 
   const temPesoInformado = Boolean(
     pedido.pesoInformadoKg && Number(pedido.pesoInformadoKg) > 0
@@ -1895,9 +1974,9 @@ export async function renderizarPaginasA4Canvas(
     );
     py2 += 15;
   }
-  if (pedido.cliente.prazoPagamentoBoleto) {
+  if (prazoBoleto) {
     ctx.fillText(
-      `Prazo Boleto: ${pedido.cliente.prazoPagamentoBoleto}`,
+      `Prazo Boleto: ${prazoBoleto}`,
       col2X + 8,
       py2
     );
@@ -2397,7 +2476,22 @@ export function gerarTextoWhatsAppPacote(pacote: PacotePedidosData): string {
 
   pacote.pedidos.forEach((p, index) => {
     const nomeCliente = p.cliente.nomeFantasia || p.cliente.razaoSocialOuNome;
+    const prazoBoleto = getPrazoBoletoEfetivo(p);
     linhas.push(`*PEDIDO ${index + 1}: ${p.numero}* [${p.status}]`);
+    if (p.dataEmbarque || p.dataEntregaPrevista) {
+      const partesLogistica: string[] = [];
+      if (p.dataEmbarque) {
+        partesLogistica.push(
+          `*Embarque:* ${formatCalendarDateBr(p.dataEmbarque)}`
+        );
+      }
+      if (p.dataEntregaPrevista) {
+        partesLogistica.push(
+          `*Entrega Prevista:* ${formatCalendarDateBr(p.dataEntregaPrevista)}`
+        );
+      }
+      linhas.push(partesLogistica.join(" | "));
+    }
     linhas.push(`*Cliente:* ${nomeCliente}`);
     if (p.cliente.cnpj) {
       linhas.push(`*CNPJ:* ${p.cliente.cnpj}`);
@@ -2405,8 +2499,8 @@ export function gerarTextoWhatsAppPacote(pacote: PacotePedidosData): string {
     if (p.cliente.inscricaoEstadual) {
       linhas.push(`*IE:* ${formatInscricaoEstadual(p.cliente.inscricaoEstadual)}`);
     }
-    if (p.cliente.prazoPagamentoBoleto) {
-      linhas.push(`*Prazo Boleto:* ${p.cliente.prazoPagamentoBoleto}`);
+    if (prazoBoleto) {
+      linhas.push(`*Prazo Boleto:* ${prazoBoleto}`);
     }
     if (p.cliente.cidade) {
       linhas.push(`*Cidade:* ${p.cliente.cidade}`);
@@ -2464,6 +2558,13 @@ export function gerarHtmlImpressaoA4Pacote(pacote: PacotePedidosData): string {
 
   const blocosPedidosHtml = pacote.pedidos
     .map((p, idx) => {
+      const prazoBoleto = getPrazoBoletoEfetivo(p);
+      const embarqueStr = p.dataEmbarque
+        ? formatCalendarDateBr(p.dataEmbarque)
+        : null;
+      const entregaStr = p.dataEntregaPrevista
+        ? formatCalendarDateBr(p.dataEntregaPrevista)
+        : null;
       const nomeCliente = p.cliente.nomeFantasia || p.cliente.razaoSocialOuNome;
       const razaoComplemento =
         p.cliente.nomeFantasia &&
@@ -2526,9 +2627,23 @@ export function gerarHtmlImpressaoA4Pacote(pacote: PacotePedidosData): string {
                 : ""
             }
             ${
-              p.cliente.prazoPagamentoBoleto
+              prazoBoleto
                 ? `<div><span class="info-label">Prazo Boleto:</span> ${escapeHtml(
-                    p.cliente.prazoPagamentoBoleto
+                    prazoBoleto
+                  )}</div>`
+                : ""
+            }
+            ${
+              embarqueStr
+                ? `<div><span class="info-label">Embarque:</span> ${escapeHtml(
+                    embarqueStr
+                  )}</div>`
+                : ""
+            }
+            ${
+              entregaStr
+                ? `<div><span class="info-label">Entrega Prev.:</span> ${escapeHtml(
+                    entregaStr
                   )}</div>`
                 : ""
             }
@@ -2957,7 +3072,17 @@ export async function renderizarPaginasA4PacoteCanvas(
       : [];
     const emailBoxExtraH =
       clientEmailLines.length > 0 ? clientEmailLines.length * 14 + 2 : 0;
-    const clientBoxH = 16 + clientNameLines.length * 14 + 20 + emailBoxExtraH;
+    const prazoBoleto = getPrazoBoletoEfetivo(p);
+    const embarqueStr = p.dataEmbarque
+      ? formatCalendarDateBr(p.dataEmbarque)
+      : null;
+    const entregaStr = p.dataEntregaPrevista
+      ? formatCalendarDateBr(p.dataEntregaPrevista)
+      : null;
+    const hasLogisticaRow = Boolean(embarqueStr || entregaStr || prazoBoleto);
+    const logisticaBoxExtraH = hasLogisticaRow ? 16 : 0;
+    const clientBoxH =
+      16 + clientNameLines.length * 14 + 20 + emailBoxExtraH + logisticaBoxExtraH;
 
     mCtx.font = `700 10px ${FONT_SANS}`;
     const itemRows = p.itens.map((it) => {
@@ -2975,7 +3100,17 @@ export async function renderizarPaginasA4PacoteCanvas(
     const thH = 20;
     const blockH = pHeaderH + clientBoxH + thH + itemsH + obsH + 12;
     dynamicHeight += blockH;
-    return { clientNameLines, clientEmailLines, clientBoxH, itemRows, blockH };
+    return {
+      clientNameLines,
+      clientEmailLines,
+      prazoBoleto,
+      embarqueStr,
+      entregaStr,
+      hasLogisticaRow,
+      clientBoxH,
+      itemRows,
+      blockH,
+    };
   });
 
   dynamicHeight += 76 + 40; // Summary box e footer
@@ -3085,6 +3220,10 @@ export async function renderizarPaginasA4PacoteCanvas(
     const {
       clientNameLines,
       clientEmailLines,
+      prazoBoleto,
+      embarqueStr,
+      entregaStr,
+      hasLogisticaRow,
       clientBoxH,
       itemRows,
       blockH,
@@ -3168,16 +3307,40 @@ export async function renderizarPaginasA4PacoteCanvas(
     ctx.font = `600 9.5px ${FONT_SANS}`;
     ctx.fillText(p.vendedor?.nome || "-", x0 + metaColW * 2 + 56, metaY);
 
+    let extraY = metaY + 16;
     if (clientEmailLines.length > 0) {
-      const emailY = metaY + 16;
       ctx.fillStyle = "#444444";
       ctx.font = `700 8.5px ${FONT_SANS}`;
-      ctx.fillText("E-MAIL:", x0 + 8, emailY);
+      ctx.fillText("E-MAIL:", x0 + 8, extraY);
       ctx.fillStyle = "#111111";
       ctx.font = `600 9.5px ${FONT_SANS}`;
       clientEmailLines.forEach((line, lIdx) => {
-        ctx.fillText(line, x0 + 52, emailY + lIdx * 14);
+        ctx.fillText(line, x0 + 52, extraY + lIdx * 14);
       });
+      extraY += clientEmailLines.length * 14 + 2;
+    }
+
+    if (hasLogisticaRow) {
+      ctx.fillStyle = "#444444";
+      ctx.font = `700 8.5px ${FONT_SANS}`;
+      ctx.fillText("EMBARQUE:", x0 + 8, extraY);
+      ctx.fillStyle = "#111111";
+      ctx.font = `600 9.5px ${FONT_SANS}`;
+      ctx.fillText(embarqueStr || "-", x0 + 66, extraY);
+
+      ctx.fillStyle = "#444444";
+      ctx.font = `700 8.5px ${FONT_SANS}`;
+      ctx.fillText("ENTREGA PREV.:", x0 + metaColW, extraY);
+      ctx.fillStyle = "#111111";
+      ctx.font = `600 9.5px ${FONT_SANS}`;
+      ctx.fillText(entregaStr || "-", x0 + metaColW + 84, extraY);
+
+      ctx.fillStyle = "#444444";
+      ctx.font = `700 8.5px ${FONT_SANS}`;
+      ctx.fillText("PRAZO BOLETO:", x0 + metaColW * 2, extraY);
+      ctx.fillStyle = "#111111";
+      ctx.font = `600 9.5px ${FONT_SANS}`;
+      ctx.fillText(prazoBoleto || "-", x0 + metaColW * 2 + 82, extraY);
     }
 
     py += clientBoxH;

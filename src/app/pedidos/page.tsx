@@ -26,10 +26,16 @@ import {
   getPeriodoPresetDates,
   getSaoPauloDateString,
   formatDateSaoPauloBr,
+  formatCalendarDateShortBr,
+  formatCalendarDateBr,
   formatYmdBr,
   isValidYmd,
   type PeriodoPreset,
 } from "@/lib/date-utils.ts";
+import {
+  parsePedidoFiltroTipoData,
+  type PedidoFiltroTipoData,
+} from "@/lib/pedido-filtros.ts";
 import {
   PedidoShareData,
   PacotePedidosData,
@@ -66,6 +72,9 @@ interface PedidoListItem {
   pesoInformadoKg: number | null;
   dataCriacao: string;
   dataConfirmacao: string | null;
+  dataEmbarque?: string | null;
+  dataEntregaPrevista?: string | null;
+  prazoPagamentoBoleto?: string | null;
   frigorifico: {
     id: string;
     nomeFantasia: string;
@@ -123,11 +132,13 @@ function resolverFiltrosDaUrl(searchParams: ReadonlyURLSearchParams): {
   dataInicio: string;
   dataFim: string;
   status: string;
+  tipoData: PedidoFiltroTipoData;
 } {
   const periodoParam = searchParams.get("periodo")?.toUpperCase();
   const statusParam = searchParams.get("status")?.toUpperCase();
   const dataInicioParam = searchParams.get("dataInicio");
   const dataFimParam = searchParams.get("dataFim");
+  const tipoData = parsePedidoFiltroTipoData(searchParams.get("tipoData"));
 
   const statusInicial =
     statusParam &&
@@ -136,12 +147,13 @@ function resolverFiltrosDaUrl(searchParams: ReadonlyURLSearchParams): {
       : "TODOS";
 
   if (periodoParam === "TODOS") {
-    return { dataInicio: "", dataFim: "", status: statusInicial };
+    return { dataInicio: "", dataFim: "", status: statusInicial, tipoData };
   }
 
   if (
     periodoParam === "HOJE" ||
     periodoParam === "ONTEM" ||
+    periodoParam === "AMANHA" ||
     periodoParam === "SEMANA" ||
     periodoParam === "MES"
   ) {
@@ -150,6 +162,7 @@ function resolverFiltrosDaUrl(searchParams: ReadonlyURLSearchParams): {
       dataInicio: range.inicioStr,
       dataFim: range.fimStr,
       status: statusInicial,
+      tipoData,
     };
   }
 
@@ -158,6 +171,7 @@ function resolverFiltrosDaUrl(searchParams: ReadonlyURLSearchParams): {
       dataInicio: isValidYmd(dataInicioParam) ? dataInicioParam : "",
       dataFim: isValidYmd(dataFimParam) ? dataFimParam : "",
       status: statusInicial,
+      tipoData,
     };
   }
 
@@ -166,6 +180,7 @@ function resolverFiltrosDaUrl(searchParams: ReadonlyURLSearchParams): {
     dataInicio: hoje.inicioStr,
     dataFim: hoje.fimStr,
     status: statusInicial,
+    tipoData,
   };
 }
 
@@ -192,7 +207,12 @@ function formatarDataPedidoExibicao(p: PedidoListItem): {
 function PedidosPageContent({
   filtrosIniciais,
 }: {
-  filtrosIniciais: { dataInicio: string; dataFim: string; status: string };
+  filtrosIniciais: {
+    dataInicio: string;
+    dataFim: string;
+    status: string;
+    tipoData: PedidoFiltroTipoData;
+  };
 }) {
   const [pedidos, setPedidos] = useState<PedidoListItem[]>([]);
   const [resumo, setResumo] = useState<ResumoFiltro>(RESUMO_VAZIO);
@@ -218,6 +238,9 @@ function PedidosPageContent({
 
   // Filtros (inicia automaticamente no dia atual, salvo parâmetro explícito na URL)
   const [termo, setTermo] = useState("");
+  const [tipoData, setTipoData] = useState<PedidoFiltroTipoData>(
+    filtrosIniciais.tipoData
+  );
   const [dataInicio, setDataInicio] = useState(filtrosIniciais.dataInicio);
   const [dataFim, setDataFim] = useState(filtrosIniciais.dataFim);
   const [frigorificoId, setFrigorificoId] = useState("");
@@ -257,6 +280,7 @@ function PedidosPageContent({
   const queryStringPedidos = useMemo(() => {
     const params = new URLSearchParams();
     if (termo) params.set("termo", termo);
+    if (tipoData !== "PADRAO") params.set("tipoData", tipoData);
     if (dataInicio) params.set("dataInicio", dataInicio);
     if (dataFim) params.set("dataFim", dataFim);
     if (frigorificoId) params.set("frigorificoId", frigorificoId);
@@ -264,7 +288,7 @@ function PedidosPageContent({
     if (vendedorId) params.set("vendedorId", vendedorId);
     if (status && status !== "TODOS") params.set("status", status);
     return params.toString();
-  }, [termo, dataInicio, dataFim, frigorificoId, clienteId, vendedorId, status]);
+  }, [termo, tipoData, dataInicio, dataFim, frigorificoId, clienteId, vendedorId, status]);
 
   useEffect(() => {
     let cancelado = false;
@@ -308,7 +332,7 @@ function PedidosPageContent({
 
   const presetAtivo = useMemo((): PeriodoPreset | "TODOS" | "PERSONALIZADO" => {
     if (!dataInicio && !dataFim) return "TODOS";
-    const presets: PeriodoPreset[] = ["HOJE", "ONTEM", "SEMANA", "MES"];
+    const presets: PeriodoPreset[] = ["HOJE", "ONTEM", "AMANHA", "SEMANA", "MES"];
     for (const p of presets) {
       const r = getPeriodoPresetDates(p);
       if (dataInicio === r.inicioStr && dataFim === r.fimStr) {
@@ -321,6 +345,7 @@ function PedidosPageContent({
   const descricaoPeriodoAtivo = useMemo(() => {
     if (presetAtivo === "HOJE") return `Hoje (${formatYmdBr(dataInicio)})`;
     if (presetAtivo === "ONTEM") return `Ontem (${formatYmdBr(dataInicio)})`;
+    if (presetAtivo === "AMANHA") return `Amanhã (${formatYmdBr(dataInicio)})`;
     if (presetAtivo === "SEMANA") {
       return `Esta semana (${formatYmdBr(dataInicio)} até ${formatYmdBr(dataFim)})`;
     }
@@ -339,6 +364,7 @@ function PedidosPageContent({
   const limparFiltros = () => {
     const hoje = getPeriodoPresetDates("HOJE");
     setTermo("");
+    setTipoData("PADRAO");
     setDataInicio(hoje.inicioStr);
     setDataFim(hoje.fimStr);
     setFrigorificoId("");
@@ -350,6 +376,7 @@ function PedidosPageContent({
 
   const verRascunhosAnteriores = () => {
     setTermo("");
+    setTipoData("PADRAO");
     setDataInicio("");
     setDataFim("");
     setStatus("RASCUNHO");
@@ -547,6 +574,7 @@ function PedidosPageContent({
             {(
               [
                 { id: "HOJE", label: "Hoje" },
+                { id: "AMANHA", label: "Amanhã" },
                 { id: "ONTEM", label: "Ontem" },
                 { id: "SEMANA", label: "Esta Semana" },
                 { id: "MES", label: "Este Mês" },
@@ -689,6 +717,24 @@ function PedidosPageContent({
             </select>
           </div>
 
+          {/* Tipo de Data do Período */}
+          <div>
+            <label className="block text-xs font-semibold text-slate-600 mb-1">
+              Filtrar Período Por
+            </label>
+            <select
+              value={tipoData}
+              onChange={(e) =>
+                setTipoData(parsePedidoFiltroTipoData(e.target.value))
+              }
+              className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-blue-500 font-medium"
+            >
+              <option value="PADRAO">Confirmação / Criação</option>
+              <option value="EMBARQUE">Embarque / Carregamento</option>
+              <option value="ENTREGA">Entrega Prevista</option>
+            </select>
+          </div>
+
           {/* Data Inicial */}
           <div>
             <label className="block text-xs font-semibold text-slate-600 mb-1">
@@ -715,11 +761,11 @@ function PedidosPageContent({
             />
           </div>
 
-          <div className="flex items-end">
+          <div className="flex items-end sm:col-span-2 lg:col-span-3">
             <button
               type="button"
               onClick={() => setRefreshTick((n) => n + 1)}
-              className="w-full flex items-center justify-center gap-1.5 py-2 px-4 bg-slate-800 hover:bg-slate-900 text-white text-xs font-semibold rounded-lg shadow-xs transition cursor-pointer"
+              className="w-full sm:w-auto flex items-center justify-center gap-1.5 py-2 px-5 bg-slate-800 hover:bg-slate-900 text-white text-xs font-semibold rounded-lg shadow-xs transition cursor-pointer"
             >
               <RefreshCw
                 className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`}
@@ -742,8 +788,12 @@ function PedidosPageContent({
               {formatCurrency(resumo.totalVendasConfirmadas)}
             </div>
             <p className="text-xs text-blue-700 mt-0.5">
-              Filtrado por data de confirmação &bull; Rascunhos e cancelados não
-              integram este total.
+              {tipoData === "EMBARQUE"
+                ? "Filtrado por data de embarque/carregamento"
+                : tipoData === "ENTREGA"
+                ? "Filtrado por data de entrega prevista"
+                : "Filtrado por data de confirmação"}{" "}
+              &bull; Rascunhos e cancelados não integram este total.
             </p>
           </div>
 
@@ -867,6 +917,7 @@ function PedidosPageContent({
                     </th>
                     <th className="py-3 px-3">Número</th>
                     <th className="py-3 px-3">Data</th>
+                    <th className="py-3 px-3">Embarque / Entrega</th>
                     <th className="py-3 px-3">Status</th>
                     <th className="py-3 px-3">Frigorífico</th>
                     <th className="py-3 px-3">Cliente</th>
@@ -944,6 +995,24 @@ function PedidosPageContent({
                               </div>
                             );
                           })()}
+                        </td>
+                        <td className="py-3.5 px-3 whitespace-nowrap">
+                          {p.dataEmbarque || p.dataEntregaPrevista ? (
+                            <div className="space-y-0.5">
+                              {p.dataEmbarque && (
+                                <div className="text-xs font-semibold text-blue-800">
+                                  Emb: {formatCalendarDateShortBr(p.dataEmbarque)}
+                                </div>
+                              )}
+                              {p.dataEntregaPrevista && (
+                                <div className="text-[11px] text-slate-500">
+                                  Ent: {formatCalendarDateShortBr(p.dataEntregaPrevista)}
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-slate-300">-</span>
+                          )}
                         </td>
                         <td className="py-3.5 px-3">
                           <span
@@ -1090,6 +1159,19 @@ function PedidosPageContent({
                             : dt.principal;
                         })()}
                       </div>
+                      {(p.dataEmbarque || p.dataEntregaPrevista) && (
+                        <div className="text-[11px] text-blue-800 font-medium">
+                          {p.dataEmbarque
+                            ? `Embarque: ${formatCalendarDateBr(p.dataEmbarque)}`
+                            : ""}
+                          {p.dataEmbarque && p.dataEntregaPrevista ? " • " : ""}
+                          {p.dataEntregaPrevista
+                            ? `Entrega Prev.: ${formatCalendarDateBr(
+                                p.dataEntregaPrevista
+                              )}`
+                            : ""}
+                        </div>
+                      )}
                     </div>
 
                     <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs pl-8">

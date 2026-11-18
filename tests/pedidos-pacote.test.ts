@@ -204,4 +204,31 @@ describe("Pacote e Agrupamento de Pedidos em Resumo Único", () => {
       /Apenas pedidos CONFIRMADOS/i
     );
   });
+
+  it("deve incluir embarque, entrega prevista e prazo do boleto do pedido no pacote", () => {
+    const pacoteComLogistica = compilarDadosPacote([
+      {
+        ...pedidosMock[0],
+        dataEmbarque: "2026-11-20T15:00:00.000Z",
+        dataEntregaPrevista: "2026-11-21T15:00:00.000Z",
+        prazoPagamentoBoleto: "28 DDL",
+        cliente: {
+          ...pedidosMock[0].cliente,
+          prazoPagamentoBoleto: "14 dias",
+        },
+      },
+      pedidosMock[1],
+    ]);
+
+    const texto = gerarTextoWhatsAppPacote(pacoteComLogistica);
+    const html = gerarHtmlImpressaoA4Pacote(pacoteComLogistica);
+
+    assert(texto.includes("*Embarque:* 20/11/2026 | *Entrega Prevista:* 21/11/2026"));
+    assert(texto.includes("*Prazo Boleto:* 28 DDL"));
+    assert(!texto.includes("*Prazo Boleto:* 14 dias"));
+
+    assert(html.includes("20/11/2026"));
+    assert(html.includes("21/11/2026"));
+    assert(html.includes("28 DDL"));
+  });
 });

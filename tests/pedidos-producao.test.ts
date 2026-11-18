@@ -270,4 +270,19 @@ describe("Resumo de Produtos para Produção / Separação", () => {
       /frigoríficos diferentes/i
     );
   });
+
+  it("deve exibir datas de embarque dos pedidos no resumo de produção", () => {
+    const resumo = compilarDadosResumoProducao([
+      { ...pedidosMock[0], dataEmbarque: "2026-11-20T15:00:00.000Z" },
+      { ...pedidosMock[1], dataEmbarque: "2026-11-21T15:00:00.000Z" },
+    ]);
+
+    assert.deepEqual(resumo.datasEmbarque, ["20/11/2026", "21/11/2026"]);
+    const texto = gerarTextoWhatsAppProducao(resumo);
+    const html = gerarHtmlImpressaoA4Producao(resumo);
+
+    assert(texto.includes("20/11/2026, 21/11/2026"));
+    assert(html.includes("Datas de Embarque:"));
+    assert(html.includes("20/11/2026, 21/11/2026"));
+  });
 });

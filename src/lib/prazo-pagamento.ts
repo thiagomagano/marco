@@ -76,3 +76,18 @@ export function normalizePrazoPagamentoBoleto(prazo: unknown): {
 
   return { valid: true, value: raw };
 }
+
+/**
+ * Resolve o prazo de pagamento efetivo de um pedido:
+ * prioriza o prazo registrado no próprio pedido e faz fallback para o cadastro do cliente
+ * (para compatibilidade com pedidos anteriores).
+ */
+export function resolverPrazoBoletoPedido(
+  pedidoPrazo?: string | null,
+  clientePrazo?: string | null
+): string | null {
+  const doPedido = pedidoPrazo?.trim();
+  if (doPedido) return doPedido;
+  const doCliente = clientePrazo?.trim();
+  return doCliente || null;
+}

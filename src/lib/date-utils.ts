@@ -22,7 +22,7 @@ const saoPauloMonthYearFormatter = new Intl.DateTimeFormat("pt-BR", {
   year: "numeric",
 });
 
-export type PeriodoPreset = "HOJE" | "ONTEM" | "SEMANA" | "MES";
+export type PeriodoPreset = "HOJE" | "ONTEM" | "AMANHA" | "SEMANA" | "MES";
 
 export interface PeriodoRange {
   inicioStr: string;
@@ -106,6 +106,10 @@ export function getPeriodoPresetDates(
     const ontemStr = shiftDateString(hojeStr, -1);
     inicioStr = ontemStr;
     fimStr = ontemStr;
+  } else if (preset === "AMANHA") {
+    const amanhaStr = shiftDateString(hojeStr, 1);
+    inicioStr = amanhaStr;
+    fimStr = amanhaStr;
   } else if (preset === "SEMANA") {
     const [y, m, d] = hojeStr.split("-").map(Number);
     const utcDay = new Date(Date.UTC(y, m - 1, d, 12, 0, 0)).getUTCDay();
@@ -156,4 +160,77 @@ export function formatDateSaoPauloBr(value: Date | string): string {
  */
 export function formatMonthYearSaoPaulo(now: Date = new Date()): string {
   return saoPauloMonthYearFormatter.format(now);
+}
+
+/**
+ * Extrai YYYY-MM-DD no fuso America/Sao_Paulo a partir de uma string (YYYY-MM-DD ou ISO) ou Date.
+ * Retorna "" se vazio ou inválido.
+ */
+export function toYmdString(value: Date | string | null | undefined): string {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return "";
+    if (isValidYmd(trimmed)) return trimmed;
+    const parsed = new Date(trimmed);
+    if (Number.isNaN(parsed.getTime())) return "";
+    return getSaoPauloDateString(parsed);
+  }
+  if (Number.isNaN(value.getTime())) return "";
+  return getSaoPauloDateString(value);
+}
+
+/**
+ * Converte uma data de calendário (YYYY-MM-DD ou Date/ISO) para Date ancorado ao meio-dia (-03:00),
+ * evitando desvios de dia por fuso horário ao persistir no banco.
+ */
+export function parseCalendarDateToSaoPauloNoon(
+  value: Date | string | null | undefined
+): Date | null {
+  const ymd = toYmdString(value);
+  if (!ymd) return null;
+  const parsed = new Date(`${ymd}T12:00:00.000-03:00`);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+/**
+ * Calcula a data de entrega prevista padrão (D+1) a partir da data de embarque YYYY-MM-DD.
+ */
+export function calcularDataEntregaPadrao(dataEmbarqueYmd: string): string {
+  if (!isValidYmd(dataEmbarqueYmd)) return "";
+  return shiftDateString(dataEmbarqueYmd, 1);
+}
+
+/**
+ * Retorna as datas padrão de um novo pedido: embarque hoje e entrega prevista amanhã (D+1).
+ */
+export function getDefaultDatasPedido(now: Date = new Date()): {
+  dataEmbarque: string;
+  dataEntregaPrevista: string;
+} {
+  const dataEmbarque = getSaoPauloDateString(now);
+  return {
+    dataEmbarque,
+    dataEntregaPrevista: shiftDateString(dataEmbarque, 1),
+  };
+}
+
+/**
+ * Formata uma data de calendário (YYYY-MM-DD, ISO ou Date) como DD/MM/AAAA em America/Sao_Paulo.
+ */
+export function formatCalendarDateBr(
+  value: Date | string | null | undefined
+): string {
+  const ymd = toYmdString(value);
+  return ymd ? formatYmdBr(ymd) : "-";
+}
+
+/**
+ * Formata uma data de calendário (YYYY-MM-DD, ISO ou Date) como DD/MM em America/Sao_Paulo.
+ */
+export function formatCalendarDateShortBr(
+  value: Date | string | null | undefined
+): string {
+  const ymd = toYmdString(value);
+  return ymd ? formatYmdShortBr(ymd) : "-";
 }

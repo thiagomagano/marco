@@ -1,5 +1,6 @@
 import Decimal from "decimal.js";
 import { formatQuantity } from "./money.ts";
+import { formatYmdBr, toYmdString } from "./date-utils.ts";
 import {
   type PedidoShareData,
   validarPedidosParaPacote,
@@ -27,6 +28,8 @@ export interface ResumoProducaoData {
   dataGeracao: string;
   totalPedidos: number;
   numerosPedidos: string[];
+  datasEmbarque: string[];
+  embarquesPorPedido: Array<{ numero: string; dataEmbarqueBr: string | null }>;
   itens: ProdutoResumoProducao[];
   totalPesoKg: number;
   totaisOutrasUnidades: Array<{ unidade: string; quantidade: number }>;
@@ -60,6 +63,21 @@ export function compilarDadosResumoProducao(
     .map((p) => p.numero)
     .filter(Boolean)
     .sort((a, b) => a.localeCompare(b, "pt-BR"));
+
+  const datasEmbarqueYmd = new Set<string>();
+  const embarquesPorPedido = [...pedidos]
+    .sort((a, b) => (a.numero || "").localeCompare(b.numero || "", "pt-BR"))
+    .map((p) => {
+      const ymd = toYmdString(p.dataEmbarque);
+      if (ymd) datasEmbarqueYmd.add(ymd);
+      return {
+        numero: p.numero,
+        dataEmbarqueBr: ymd ? formatYmdBr(ymd) : null,
+      };
+    });
+  const datasEmbarque = Array.from(datasEmbarqueYmd)
+    .sort()
+    .map((ymd) => formatYmdBr(ymd));
 
   pedidos.forEach((pedido, pedidoIdx) => {
     const pedidoKey = pedido.id || pedido.numero || `idx-${pedidoIdx}`;
@@ -154,6 +172,8 @@ export function compilarDadosResumoProducao(
     dataGeracao: new Date().toISOString(),
     totalPedidos: pedidos.length,
     numerosPedidos,
+    datasEmbarque,
+    embarquesPorPedido,
     itens,
     totalPesoKg: totalPesoKg.toDecimalPlaces(3).toNumber(),
     totaisOutrasUnidades,
@@ -189,6 +209,15 @@ export function gerarTextoWhatsAppProducao(resumo: ResumoProducaoData): string {
   linhas.push(
     `Pedidos incluídos (${resumo.totalPedidos}): ${resumo.numerosPedidos.join(", ")}`
   );
+  if (resumo.datasEmbarque.length === 1) {
+    linhas.push(`Embarque/Carregamento: *${resumo.datasEmbarque[0]}*`);
+  } else if (resumo.datasEmbarque.length > 1) {
+    const detalhes = resumo.embarquesPorPedido
+      .filter((e) => e.dataEmbarqueBr)
+      .map((e) => `${e.numero} (${e.dataEmbarqueBr})`)
+      .join(", ");
+    linhas.push(`Embarques: *${resumo.datasEmbarque.join(", ")}* (${detalhes})`);
+  }
   linhas.push("===============================");
   linhas.push("");
 
@@ -492,9 +521,18 @@ export function gerarHtmlImpressaoA4Producao(
     </div>
 
     <div class="orders-ref-box">
-      <strong>Pedidos incluídos (${resumo.totalPedidos}):</strong> ${escapeHtml(
+      <div><strong>Pedidos incluídos (${resumo.totalPedidos}):</strong> ${escapeHtml(
         resumo.numerosPedidos.join(", ")
-      )}
+      )}</div>
+      ${
+        resumo.datasEmbarque.length > 0
+          ? `<div style="margin-top: 3px;"><strong>${escapeHtml(
+              resumo.datasEmbarque.length === 1
+                ? "Embarque/Carregamento:"
+                : "Datas de Embarque:"
+            )}</strong> ${escapeHtml(resumo.datasEmbarque.join(", "))}</div>`
+          : ""
+      }
     </div>
 
     <table class="items-table">
@@ -574,7 +612,17 @@ export async function renderizarPaginasA4ProducaoCanvas(
   mCtx.font = `400 9.5px ${FONT_SANS}`;
   const pedidosRefText = `Pedidos incluídos (${resumo.totalPedidos}): ${resumo.numerosPedidos.join(", ")}`;
   const pedidosRefLines = wrapTextLines(mCtx, pedidosRefText, CONTENT_W - 20);
-  const pedidosRefBoxH = Math.max(28, pedidosRefLines.length * 13 + 12);
+  const embarqueRefText =
+    resumo.datasEmbarque.length === 1
+      ? `Embarque/Carregamento: ${resumo.datasEmbarque[0]}`
+      : resumo.datasEmbarque.length > 1
+      ? `Datas de Embarque: ${resumo.datasEmbarque.join(", ")}`
+      : "";
+  const embarqueRefLines = embarqueRefText
+    ? wrapTextLines(mCtx, embarqueRefText, CONTENT_W - 20)
+    : [];
+  const totalRefLines = pedidosRefLines.length + embarqueRefLines.length;
+  const pedidosRefBoxH = Math.max(28, totalRefLines * 13 + 12);
 
   // Colunas: # (30) | Código (68) | Produto (252) | Embalagem (114) | Unid (52) | Pedidos (78) | Qtd/Peso (120) = 714
   const colWidths = [30, 68, 252, 114, 52, 78, 120];
@@ -718,6 +766,13 @@ export async function renderizarPaginasA4ProducaoCanvas(
   for (const line of pedidosRefLines) {
     ctx.fillText(line, x0 + 10, refY);
     refY += 13;
+  }
+  if (embarqueRefLines.length > 0) {
+    ctx.font = `700 9.5px ${FONT_SANS}`;
+    for (const line of embarqueRefLines) {
+      ctx.fillText(line, x0 + 10, refY);
+      refY += 13;
+    }
   }
   y += pedidosRefBoxH + 10;
 
