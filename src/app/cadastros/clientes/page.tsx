@@ -15,6 +15,8 @@ import {
   X,
 } from "lucide-react";
 import { formatCnpj, isValidCnpj, normalizeCnpj } from "@/lib/cnpj.ts";
+import { formatCurrency, formatQuantity } from "@/lib/money.ts";
+import type { ClienteOrdenacao } from "@/lib/cliente-ordem.ts";
 import type { ConsultaCnpjResult } from "@/lib/brasilapi-cnpj.ts";
 import {
   BrasilApiReviewModal,
@@ -55,6 +57,11 @@ interface Cliente {
   _count: {
     pedidos: number;
   };
+  metricasCompra?: {
+    totalValorComprado: number;
+    totalPesoKg: number;
+    qtdConfirmados: number;
+  };
 }
 
 export default function ClientesPage() {
@@ -62,6 +69,7 @@ export default function ClientesPage() {
   const [vendedores, setVendedores] = useState<Vendedor[]>([]);
   const [filtroVendedorId, setFiltroVendedorId] = useState("");
   const [filtroStatus, setFiltroStatus] = useState<"TODOS" | "ATIVOS" | "INATIVOS">("TODOS");
+  const [ordenarPor, setOrdenarPor] = useState<ClienteOrdenacao>("mais_pedidos");
   const [buscaInput, setBuscaInput] = useState("");
   const [busca, setBusca] = useState("");
   const [page, setPage] = useState(1);
@@ -115,6 +123,7 @@ export default function ClientesPage() {
         const params = new URLSearchParams();
         params.set("page", String(page));
         params.set("limit", String(limit));
+        params.set("ordenar", ordenarPor);
         if (filtroVendedorId) params.set("vendedorId", filtroVendedorId);
         if (filtroStatus === "ATIVOS") params.set("ativos", "true");
         if (filtroStatus === "INATIVOS") params.set("ativos", "false");
@@ -139,7 +148,7 @@ export default function ClientesPage() {
         }
       }
     },
-    [page, limit, filtroVendedorId, filtroStatus, busca]
+    [page, limit, ordenarPor, filtroVendedorId, filtroStatus, busca]
   );
 
   const carregarVendedores = async () => {
@@ -433,9 +442,9 @@ export default function ClientesPage() {
       )}
 
       {/* Filtros e Busca */}
-      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs grid grid-cols-1 md:grid-cols-4 gap-3">
+      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs grid grid-cols-1 md:grid-cols-12 gap-3">
         {/* Filtro por Vendedor */}
-        <div>
+        <div className="md:col-span-3">
           <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
             Carteira do Vendedor
           </label>
@@ -457,7 +466,7 @@ export default function ClientesPage() {
         </div>
 
         {/* Filtro por Status */}
-        <div>
+        <div className="md:col-span-2">
           <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
             Status
           </label>
@@ -475,8 +484,29 @@ export default function ClientesPage() {
           </select>
         </div>
 
+        {/* Ordenação */}
+        <div className="md:col-span-3">
+          <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
+            Ordenar por
+          </label>
+          <select
+            value={ordenarPor}
+            onChange={(e) => {
+              setOrdenarPor(e.target.value as ClienteOrdenacao);
+              setPage(1);
+            }}
+            className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-blue-500 font-semibold"
+          >
+            <option value="mais_pedidos">Mais pedidos (Ativos e Compras)</option>
+            <option value="maior_valor">Maior valor comprado (R$)</option>
+            <option value="maior_qtd">Maior volume comprado (kg)</option>
+            <option value="ativos_primeiro">Ativos primeiro</option>
+            <option value="alfabetica">Ordem alfabética (A–Z)</option>
+          </select>
+        </div>
+
         {/* Busca por Razão Social, Nome Fantasia ou CNPJ */}
-        <div className="md:col-span-2">
+        <div className="md:col-span-4">
           <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
             Buscar Cliente
           </label>
@@ -628,7 +658,23 @@ export default function ClientesPage() {
                       {c.telefone || "-"}
                     </td>
                     <td className="py-3 px-4">
-                      <span className="font-semibold text-slate-800">{c._count.pedidos}</span> pedidos
+                      <div>
+                        <span className="font-semibold text-slate-800">
+                          {c._count.pedidos}
+                        </span>{" "}
+                        {c._count.pedidos === 1 ? "pedido" : "pedidos"}
+                      </div>
+                      {(c.metricasCompra?.totalValorComprado ?? 0) > 0 && (
+                        <div className="text-[11px] text-slate-500 mt-0.5 whitespace-nowrap">
+                          {formatCurrency(c.metricasCompra!.totalValorComprado)}
+                          {c.metricasCompra!.totalPesoKg > 0
+                            ? ` • ${formatQuantity(
+                                c.metricasCompra!.totalPesoKg,
+                                "kg"
+                              )}`
+                            : ""}
+                        </div>
+                      )}
                     </td>
                     <td className="py-3 px-4 text-center">
                       <span

@@ -12,6 +12,11 @@ import {
   buildClienteWhere,
 } from "@/lib/cliente-search.ts";
 import { ensureClientesBuscaTextoBackfilled } from "@/lib/cliente-backfill.ts";
+import {
+  ordenarClientes,
+  parseClienteOrdenacao,
+  type ClienteMetricaCompra,
+} from "@/lib/cliente-ordem.ts";
 
 const DEFAULT_PAGE_SIZE = 50;
 const MAX_PAGE_SIZE = 200;
@@ -27,6 +32,7 @@ export async function GET(request: Request) {
       ativosParam === "true" ? true : ativosParam === "false" ? false : null;
     const busca = searchParams.get("busca")?.trim();
     const vendedorId = searchParams.get("vendedorId")?.trim();
+    const ordenar = parseClienteOrdenacao(searchParams.get("ordenar"));
 
     const pageRaw = Number.parseInt(searchParams.get("page") || "1", 10);
     const limitRaw = Number.parseInt(
@@ -40,25 +46,90 @@ export async function GET(request: Request) {
 
     const where = buildClienteWhere({ busca, vendedorId, ativos });
 
-    const [clientes, total] = await Promise.all([
+    const [candidatos, comprasAgrupadas] = await Promise.all([
       prisma.cliente.findMany({
         where,
-        orderBy: [{ razaoSocialOuNome: "asc" }, { id: "asc" }],
-        skip: (page - 1) * limit,
-        take: limit,
-        include: {
-          vendedor: {
-            select: { id: true, nome: true },
-          },
+        select: {
+          id: true,
+          ativo: true,
+          razaoSocialOuNome: true,
           _count: {
             select: { pedidos: true },
           },
         },
       }),
-      prisma.cliente.count({ where }),
+      prisma.pedido.groupBy({
+        by: ["clienteId"],
+        where: { status: "CONFIRMADO" },
+        _sum: {
+          totalEstimado: true,
+          pesoInformadoKg: true,
+        },
+        _count: {
+          _all: true,
+        },
+      }),
     ]);
 
+    const metricasMap = new Map<string, ClienteMetricaCompra>();
+    for (const row of comprasAgrupadas) {
+      metricasMap.set(row.clienteId, {
+        totalValorComprado: Number(row._sum.totalEstimado || 0),
+        totalPesoKg: Number(row._sum.pesoInformadoKg || 0),
+        qtdConfirmados: row._count._all,
+      });
+    }
+
+    const ordenados = ordenarClientes(
+      candidatos.map((c) => {
+        const m = metricasMap.get(c.id);
+        return {
+          id: c.id,
+          ativo: c.ativo,
+          razaoSocialOuNome: c.razaoSocialOuNome,
+          totalPedidos: c._count.pedidos,
+          totalValorComprado: m?.totalValorComprado ?? 0,
+          totalPesoKg: m?.totalPesoKg ?? 0,
+        };
+      }),
+      ordenar
+    );
+
+    const total = ordenados.length;
     const totalPages = Math.max(1, Math.ceil(total / limit));
+    const offset = (page - 1) * limit;
+    const pageIds = ordenados.slice(offset, offset + limit).map((c) => c.id);
+
+    const clientesPagina =
+      pageIds.length > 0
+        ? await prisma.cliente.findMany({
+            where: { id: { in: pageIds } },
+            include: {
+              vendedor: {
+                select: { id: true, nome: true },
+              },
+              _count: {
+                select: { pedidos: true },
+              },
+            },
+          })
+        : [];
+
+    const clientesById = new Map(clientesPagina.map((c) => [c.id, c]));
+    const clientes = pageIds
+      .map((id) => {
+        const cli = clientesById.get(id);
+        if (!cli) return null;
+        return {
+          ...cli,
+          metricasCompra: metricasMap.get(id) ?? {
+            totalValorComprado: 0,
+            totalPesoKg: 0,
+            qtdConfirmados: 0,
+          },
+        };
+      })
+      .filter((c): c is NonNullable<typeof c> => c !== null);
 
     return NextResponse.json({
       clientes,
