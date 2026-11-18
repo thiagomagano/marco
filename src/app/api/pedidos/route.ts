@@ -7,6 +7,12 @@ import {
   calculateOrderTotal,
   calculateReportedWeightKg,
 } from "@/lib/money.ts";
+import { getPeriodoPresetDates } from "@/lib/date-utils.ts";
+import {
+  buildPedidoDateFilter,
+  calcularResumoPedidos,
+  getPedidoDataReferenciaMs,
+} from "@/lib/pedido-filtros.ts";
 
 export async function GET(request: Request) {
   try {
@@ -47,15 +53,10 @@ export async function GET(request: Request) {
       where.status = status;
     }
 
-    if (dataInicio || dataFim) {
-      where.dataCriacao = {};
-      if (dataInicio) {
-        where.dataCriacao.gte = new Date(`${dataInicio}T00:00:00.000Z`);
-      }
-      if (dataFim) {
-        where.dataCriacao.lte = new Date(`${dataFim}T23:59:59.999Z`);
-      }
-    }
+    Object.assign(
+      where,
+      buildPedidoDateFilter({ status, dataInicio, dataFim })
+    );
 
     const idsParam = searchParams.get("ids");
     if (idsParam) {
@@ -68,66 +69,73 @@ export async function GET(request: Request) {
       }
     }
 
-    const pedidos = await prisma.pedido.findMany({
-      where,
-      orderBy: { dataCriacao: "desc" },
-      include: {
-        frigorifico: {
-          select: {
-            id: true,
-            nomeFantasia: true,
-            cnpj: true,
-            telefone: true,
-          },
-        },
-        cliente: {
-          select: {
-            id: true,
-            razaoSocialOuNome: true,
-            nomeFantasia: true,
-            cnpj: true,
-            inscricaoEstadual: true,
-            prazoPagamentoBoleto: true,
-            telefone: true,
-            email: true,
-            endereco: true,
-            bairro: true,
-            cidade: true,
-            cep: true,
-          },
-        },
-        vendedor: { select: { id: true, nome: true, telefone: true } },
-        itens: {
-          select: {
-            id: true,
-            produtoNomeSnapshot: true,
-            produtoCodigoSnapshot: true,
-            produtoUnidadeSnapshot: true,
-            produtoEmbalagemSnapshot: true,
-            quantidade: true,
-            precoUnitario: true,
-            subtotal: true,
-          },
-        },
-      },
-    });
+    const { inicio: inicioHoje } = getPeriodoPresetDates("HOJE");
 
-    // Total de vendas confirmadas dentro do filtro (seção 8 da especificação)
-    const pedidosConfirmados = pedidos.filter((p) => p.status === "CONFIRMADO");
-    const totalVendasConfirmadas = pedidosConfirmados.reduce(
-      (acc, p) => acc + p.totalEstimado,
-      0
+    const [pedidosBrutos, qtdRascunhosAnteriores] = await Promise.all([
+      prisma.pedido.findMany({
+        where,
+        orderBy: { dataCriacao: "desc" },
+        include: {
+          frigorifico: {
+            select: {
+              id: true,
+              nomeFantasia: true,
+              cnpj: true,
+              telefone: true,
+            },
+          },
+          cliente: {
+            select: {
+              id: true,
+              razaoSocialOuNome: true,
+              nomeFantasia: true,
+              cnpj: true,
+              inscricaoEstadual: true,
+              prazoPagamentoBoleto: true,
+              telefone: true,
+              email: true,
+              endereco: true,
+              bairro: true,
+              cidade: true,
+              cep: true,
+            },
+          },
+          vendedor: { select: { id: true, nome: true, telefone: true } },
+          itens: {
+            select: {
+              id: true,
+              produtoNomeSnapshot: true,
+              produtoCodigoSnapshot: true,
+              produtoUnidadeSnapshot: true,
+              produtoEmbalagemSnapshot: true,
+              quantidade: true,
+              precoUnitario: true,
+              subtotal: true,
+            },
+          },
+        },
+      }),
+      prisma.pedido.count({
+        where: {
+          status: "RASCUNHO",
+          dataCriacao: { lt: inicioHoje },
+        },
+      }),
+    ]);
+
+    // Ordena pela data de referência mais recente (dataConfirmacao para confirmados, dataCriacao para os demais)
+    const pedidos = [...pedidosBrutos].sort(
+      (a, b) => getPedidoDataReferenciaMs(b) - getPedidoDataReferenciaMs(a)
     );
+
+    const resumo = {
+      ...calcularResumoPedidos(pedidos),
+      qtdRascunhosAnteriores,
+    };
 
     return NextResponse.json({
       pedidos,
-      resumo: {
-        totalVendasConfirmadas,
-        qtdTotal: pedidos.length,
-        qtdConfirmados: pedidosConfirmados.length,
-        qtdRascunhos: pedidos.filter((p) => p.status === "RASCUNHO").length,
-        qtdCancelados: pedidos.filter((p) => p.status === "CANCELADO").length,
-      },
+      resumo,
     });
   } catch (error) {
     console.error("Erro ao listar pedidos:", error);

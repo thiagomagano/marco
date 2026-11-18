@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useMemo, Suspense } from "react";
 import Link from "next/link";
+import { useSearchParams, type ReadonlyURLSearchParams } from "next/navigation";
 import {
   Search,
   Filter,
@@ -16,9 +17,19 @@ import {
   Package,
   ClipboardList,
   AlertTriangle,
+  Scale,
+  Calendar,
   X,
 } from "lucide-react";
 import { formatCurrency, formatQuantity } from "@/lib/money.ts";
+import {
+  getPeriodoPresetDates,
+  getSaoPauloDateString,
+  formatDateSaoPauloBr,
+  formatYmdBr,
+  isValidYmd,
+  type PeriodoPreset,
+} from "@/lib/date-utils.ts";
 import {
   PedidoShareData,
   PacotePedidosData,
@@ -90,21 +101,101 @@ interface PedidoListItem {
 
 interface ResumoFiltro {
   totalVendasConfirmadas: number;
+  totalPesoKgConfirmado: number;
   qtdTotal: number;
   qtdConfirmados: number;
   qtdRascunhos: number;
   qtdCancelados: number;
+  qtdRascunhosAnteriores: number;
 }
 
-export default function PedidosPage() {
+const RESUMO_VAZIO: ResumoFiltro = {
+  totalVendasConfirmadas: 0,
+  totalPesoKgConfirmado: 0,
+  qtdTotal: 0,
+  qtdConfirmados: 0,
+  qtdRascunhos: 0,
+  qtdCancelados: 0,
+  qtdRascunhosAnteriores: 0,
+};
+
+function resolverFiltrosDaUrl(searchParams: ReadonlyURLSearchParams): {
+  dataInicio: string;
+  dataFim: string;
+  status: string;
+} {
+  const periodoParam = searchParams.get("periodo")?.toUpperCase();
+  const statusParam = searchParams.get("status")?.toUpperCase();
+  const dataInicioParam = searchParams.get("dataInicio");
+  const dataFimParam = searchParams.get("dataFim");
+
+  const statusInicial =
+    statusParam &&
+    ["TODOS", "CONFIRMADO", "RASCUNHO", "CANCELADO"].includes(statusParam)
+      ? statusParam
+      : "TODOS";
+
+  if (periodoParam === "TODOS") {
+    return { dataInicio: "", dataFim: "", status: statusInicial };
+  }
+
+  if (
+    periodoParam === "HOJE" ||
+    periodoParam === "ONTEM" ||
+    periodoParam === "SEMANA" ||
+    periodoParam === "MES"
+  ) {
+    const range = getPeriodoPresetDates(periodoParam);
+    return {
+      dataInicio: range.inicioStr,
+      dataFim: range.fimStr,
+      status: statusInicial,
+    };
+  }
+
+  if (dataInicioParam || dataFimParam) {
+    return {
+      dataInicio: isValidYmd(dataInicioParam) ? dataInicioParam : "",
+      dataFim: isValidYmd(dataFimParam) ? dataFimParam : "",
+      status: statusInicial,
+    };
+  }
+
+  const hoje = getPeriodoPresetDates("HOJE");
+  return {
+    dataInicio: hoje.inicioStr,
+    dataFim: hoje.fimStr,
+    status: statusInicial,
+  };
+}
+
+function formatarDataPedidoExibicao(p: PedidoListItem): {
+  principal: string;
+  criadoEmDiferente: string | null;
+} {
+  const isConfirmado = p.status === "CONFIRMADO" && Boolean(p.dataConfirmacao);
+  const dataPrincipal = isConfirmado ? p.dataConfirmacao! : p.dataCriacao;
+  const principal = formatDateSaoPauloBr(dataPrincipal);
+  if (isConfirmado && p.dataConfirmacao) {
+    const ymdConf = getSaoPauloDateString(new Date(p.dataConfirmacao));
+    const ymdCria = getSaoPauloDateString(new Date(p.dataCriacao));
+    if (ymdConf !== ymdCria) {
+      return {
+        principal,
+        criadoEmDiferente: formatDateSaoPauloBr(p.dataCriacao),
+      };
+    }
+  }
+  return { principal, criadoEmDiferente: null };
+}
+
+function PedidosPageContent({
+  filtrosIniciais,
+}: {
+  filtrosIniciais: { dataInicio: string; dataFim: string; status: string };
+}) {
   const [pedidos, setPedidos] = useState<PedidoListItem[]>([]);
-  const [resumo, setResumo] = useState<ResumoFiltro>({
-    totalVendasConfirmadas: 0,
-    qtdTotal: 0,
-    qtdConfirmados: 0,
-    qtdRascunhos: 0,
-    qtdCancelados: 0,
-  });
+  const [resumo, setResumo] = useState<ResumoFiltro>(RESUMO_VAZIO);
   const [loading, setLoading] = useState(true);
 
   // Seleção múltipla para pacote de pedidos (restrito a 1 frigorífico por pacote)
@@ -125,14 +216,14 @@ export default function PedidosPage() {
   const [exportPdfBlob, setExportPdfBlob] = useState<Blob | null>(null);
   const [erroExport, setErroExport] = useState<string | null>(null);
 
-  // Filtros
+  // Filtros (inicia automaticamente no dia atual, salvo parâmetro explícito na URL)
   const [termo, setTermo] = useState("");
-  const [dataInicio, setDataInicio] = useState("");
-  const [dataFim, setDataFim] = useState("");
+  const [dataInicio, setDataInicio] = useState(filtrosIniciais.dataInicio);
+  const [dataFim, setDataFim] = useState(filtrosIniciais.dataFim);
   const [frigorificoId, setFrigorificoId] = useState("");
   const [clienteId, setClienteId] = useState("");
   const [vendedorId, setVendedorId] = useState("");
-  const [status, setStatus] = useState("TODOS");
+  const [status, setStatus] = useState(filtrosIniciais.status);
 
   // Listas auxiliares para os selects de filtro
   const [frigorificos, setFrigorificos] = useState<
@@ -161,52 +252,107 @@ export default function PedidosPage() {
     carregarAuxiliares();
   }, []);
 
-  const buscarPedidos = useCallback(async () => {
-    setLoading(true);
-    try {
-      const params = new URLSearchParams();
-      if (termo) params.set("termo", termo);
-      if (dataInicio) params.set("dataInicio", dataInicio);
-      if (dataFim) params.set("dataFim", dataFim);
-      if (frigorificoId) params.set("frigorificoId", frigorificoId);
-      if (clienteId) params.set("clienteId", clienteId);
-      if (vendedorId) params.set("vendedorId", vendedorId);
-      if (status && status !== "TODOS") params.set("status", status);
+  const [refreshTick, setRefreshTick] = useState(0);
 
-      const res = await fetch(`/api/pedidos?${params.toString()}`);
-      if (res.ok) {
-        const data = await res.json();
-        setPedidos(data.pedidos || []);
-        setResumo(
-          data.resumo || {
-            totalVendasConfirmadas: 0,
-            qtdTotal: 0,
-            qtdConfirmados: 0,
-            qtdRascunhos: 0,
-            qtdCancelados: 0,
-          }
-        );
-      }
-    } catch (e) {
-      console.error("Erro ao buscar pedidos:", e);
-    } finally {
-      setLoading(false);
-    }
+  const queryStringPedidos = useMemo(() => {
+    const params = new URLSearchParams();
+    if (termo) params.set("termo", termo);
+    if (dataInicio) params.set("dataInicio", dataInicio);
+    if (dataFim) params.set("dataFim", dataFim);
+    if (frigorificoId) params.set("frigorificoId", frigorificoId);
+    if (clienteId) params.set("clienteId", clienteId);
+    if (vendedorId) params.set("vendedorId", vendedorId);
+    if (status && status !== "TODOS") params.set("status", status);
+    return params.toString();
   }, [termo, dataInicio, dataFim, frigorificoId, clienteId, vendedorId, status]);
 
   useEffect(() => {
-    buscarPedidos();
-  }, [buscarPedidos]);
+    let cancelado = false;
+    async function carregarPedidos() {
+      await Promise.resolve();
+      if (cancelado) return;
+      setLoading(true);
+      try {
+        const res = await fetch(`/api/pedidos?${queryStringPedidos}`);
+        if (res.ok && !cancelado) {
+          const data = await res.json();
+          setPedidos(data.pedidos || []);
+          setResumo(data.resumo || RESUMO_VAZIO);
+        }
+      } catch (e) {
+        if (!cancelado) {
+          console.error("Erro ao buscar pedidos:", e);
+        }
+      } finally {
+        if (!cancelado) {
+          setLoading(false);
+        }
+      }
+    }
+    carregarPedidos();
+    return () => {
+      cancelado = true;
+    };
+  }, [queryStringPedidos, refreshTick]);
+
+  const aplicarPeriodoPreset = (preset: PeriodoPreset | "TODOS") => {
+    if (preset === "TODOS") {
+      setDataInicio("");
+      setDataFim("");
+      return;
+    }
+    const range = getPeriodoPresetDates(preset);
+    setDataInicio(range.inicioStr);
+    setDataFim(range.fimStr);
+  };
+
+  const presetAtivo = useMemo((): PeriodoPreset | "TODOS" | "PERSONALIZADO" => {
+    if (!dataInicio && !dataFim) return "TODOS";
+    const presets: PeriodoPreset[] = ["HOJE", "ONTEM", "SEMANA", "MES"];
+    for (const p of presets) {
+      const r = getPeriodoPresetDates(p);
+      if (dataInicio === r.inicioStr && dataFim === r.fimStr) {
+        return p;
+      }
+    }
+    return "PERSONALIZADO";
+  }, [dataInicio, dataFim]);
+
+  const descricaoPeriodoAtivo = useMemo(() => {
+    if (presetAtivo === "HOJE") return `Hoje (${formatYmdBr(dataInicio)})`;
+    if (presetAtivo === "ONTEM") return `Ontem (${formatYmdBr(dataInicio)})`;
+    if (presetAtivo === "SEMANA") {
+      return `Esta semana (${formatYmdBr(dataInicio)} até ${formatYmdBr(dataFim)})`;
+    }
+    if (presetAtivo === "MES") {
+      return `Este mês (${formatYmdBr(dataInicio)} até ${formatYmdBr(dataFim)})`;
+    }
+    if (presetAtivo === "TODOS") return "Todo o período";
+    if (dataInicio && dataFim) {
+      return `${formatYmdBr(dataInicio)} até ${formatYmdBr(dataFim)}`;
+    }
+    if (dataInicio) return `A partir de ${formatYmdBr(dataInicio)}`;
+    if (dataFim) return `Até ${formatYmdBr(dataFim)}`;
+    return "Personalizado";
+  }, [presetAtivo, dataInicio, dataFim]);
 
   const limparFiltros = () => {
+    const hoje = getPeriodoPresetDates("HOJE");
     setTermo("");
-    setDataInicio("");
-    setDataFim("");
+    setDataInicio(hoje.inicioStr);
+    setDataFim(hoje.fimStr);
     setFrigorificoId("");
     setClienteId("");
     setSelectedClienteFiltro(null);
     setVendedorId("");
     setStatus("TODOS");
+  };
+
+  const verRascunhosAnteriores = () => {
+    setTermo("");
+    setDataInicio("");
+    setDataFim("");
+    setStatus("RASCUNHO");
   };
 
   const pedidosSelecionadosLista = useMemo(() => {
@@ -387,17 +533,51 @@ export default function PedidosPage() {
 
       {/* Caixa de Filtros */}
       <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4">
-        <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-slate-100 pb-3">
           <div className="flex items-center gap-2 text-xs font-bold text-slate-700 uppercase tracking-wider">
             <Filter className="w-4 h-4 text-blue-600" />
             <span>Filtros de Pesquisa</span>
           </div>
-          <button
-            onClick={limparFiltros}
-            className="text-xs font-semibold text-slate-500 hover:text-slate-800 transition cursor-pointer"
-          >
-            Limpar filtros
-          </button>
+
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-[11px] font-semibold text-slate-400 mr-1 inline-flex items-center gap-1">
+              <Calendar className="w-3.5 h-3.5" />
+              Período:
+            </span>
+            {(
+              [
+                { id: "HOJE", label: "Hoje" },
+                { id: "ONTEM", label: "Ontem" },
+                { id: "SEMANA", label: "Esta Semana" },
+                { id: "MES", label: "Este Mês" },
+                { id: "TODOS", label: "Todo o Período" },
+              ] as const
+            ).map((opt) => {
+              const ativo = presetAtivo === opt.id;
+              return (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => aplicarPeriodoPreset(opt.id)}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition cursor-pointer border ${
+                    ativo
+                      ? "bg-blue-600 text-white border-blue-600 shadow-xs"
+                      : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100 hover:text-slate-900"
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              );
+            })}
+            <button
+              type="button"
+              onClick={limparFiltros}
+              className="ml-2 text-xs font-semibold text-slate-500 hover:text-slate-800 transition cursor-pointer"
+              title="Restaura filtros e volta para o dia de hoje"
+            >
+              Resetar (Hoje)
+            </button>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-sm">
@@ -537,35 +717,51 @@ export default function PedidosPage() {
 
           <div className="flex items-end">
             <button
-              onClick={buscarPedidos}
+              type="button"
+              onClick={() => setRefreshTick((n) => n + 1)}
               className="w-full flex items-center justify-center gap-1.5 py-2 px-4 bg-slate-800 hover:bg-slate-900 text-white text-xs font-semibold rounded-lg shadow-xs transition cursor-pointer"
             >
               <RefreshCw
                 className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`}
               />
-              <span>Aplicar Filtros</span>
+              <span>Atualizar Lista</span>
             </button>
           </div>
         </div>
       </div>
 
-      {/* Somatório de Vendas Conforme Seção 8 */}
-      <div className="bg-blue-50 border border-blue-200 rounded-2xl p-5 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-        <div>
-          <div className="text-xs font-bold text-blue-800 uppercase tracking-wider flex items-center gap-1.5">
-            <TrendingUp className="w-4 h-4 text-blue-600" />
-            <span>Vendas Registradas pela Representação (Filtro Atual)</span>
+      {/* Somatório de Vendas e Quantidade Vendida no Período */}
+      <div className="bg-blue-50 border border-blue-200 rounded-2xl p-5 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-6">
+          <div>
+            <div className="text-xs font-bold text-blue-800 uppercase tracking-wider flex items-center gap-1.5">
+              <TrendingUp className="w-4 h-4 text-blue-600" />
+              <span>Vendas Confirmadas &bull; {descricaoPeriodoAtivo}</span>
+            </div>
+            <div className="text-3xl font-extrabold text-blue-950 mt-1">
+              {formatCurrency(resumo.totalVendasConfirmadas)}
+            </div>
+            <p className="text-xs text-blue-700 mt-0.5">
+              Filtrado por data de confirmação &bull; Rascunhos e cancelados não
+              integram este total.
+            </p>
           </div>
-          <div className="text-3xl font-extrabold text-blue-950 mt-1">
-            {formatCurrency(resumo.totalVendasConfirmadas)}
+
+          <div className="sm:border-l sm:border-blue-200 sm:pl-6">
+            <div className="text-xs font-bold text-blue-800 uppercase tracking-wider flex items-center gap-1.5">
+              <Scale className="w-4 h-4 text-blue-600" />
+              <span>Qtd. Vendida (kg)</span>
+            </div>
+            <div className="text-2xl font-extrabold text-blue-950 mt-1">
+              {formatQuantity(resumo.totalPesoKgConfirmado, "kg")}
+            </div>
+            <p className="text-xs text-blue-700 mt-0.5">
+              Peso confirmado no filtro atual
+            </p>
           </div>
-          <p className="text-xs text-blue-700 mt-0.5">
-            Valores estimados negociados pela representação &bull; Pedidos em
-            rascunho e cancelados não integram este total.
-          </p>
         </div>
 
-        <div className="flex items-center gap-3 text-xs font-semibold">
+        <div className="flex flex-wrap items-center gap-2.5 text-xs font-semibold">
           <div className="bg-white/80 border border-blue-200 px-3 py-2 rounded-xl text-slate-700">
             <span className="text-emerald-700 font-bold">
               {resumo.qtdConfirmados}
@@ -586,6 +782,34 @@ export default function PedidosPage() {
           </div>
         </div>
       </div>
+
+      {/* Aviso de Rascunhos Pendentes de Dias Anteriores */}
+      {resumo.qtdRascunhosAnteriores > 0 &&
+        (dataInicio || dataFim) &&
+        status !== "RASCUNHO" && (
+          <div className="bg-amber-50 border border-amber-200 text-amber-900 px-4 py-3 rounded-xl text-xs font-medium flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5">
+            <div className="flex items-center gap-2">
+              <FileEdit className="w-4 h-4 text-amber-600 shrink-0" />
+              <span>
+                Você tem{" "}
+                <strong>
+                  {resumo.qtdRascunhosAnteriores}{" "}
+                  {resumo.qtdRascunhosAnteriores === 1
+                    ? "rascunho em aberto"
+                    : "rascunhos em aberto"}
+                </strong>{" "}
+                de dias anteriores aguardando confirmação.
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={verRascunhosAnteriores}
+              className="self-start sm:self-auto px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-semibold text-xs transition cursor-pointer shrink-0"
+            >
+              Ver rascunhos pendentes
+            </button>
+          </div>
+        )}
 
       {/* Aviso de Regra de Frigorífico Único */}
       {avisoSelecao && (
@@ -707,7 +931,19 @@ export default function PedidosPage() {
                           {p.numero}
                         </td>
                         <td className="py-3.5 px-3 text-slate-500">
-                          {new Date(p.dataCriacao).toLocaleDateString("pt-BR")}
+                          {(() => {
+                            const dt = formatarDataPedidoExibicao(p);
+                            return (
+                              <div>
+                                <div>{dt.principal}</div>
+                                {dt.criadoEmDiferente && (
+                                  <div className="text-[10px] text-slate-400">
+                                    Criado {dt.criadoEmDiferente}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })()}
                         </td>
                         <td className="py-3.5 px-3">
                           <span
@@ -847,7 +1083,12 @@ export default function PedidosPage() {
                           {p.vendedor.nome}
                         </span>{" "}
                         &bull;{" "}
-                        {new Date(p.dataCriacao).toLocaleDateString("pt-BR")}
+                        {(() => {
+                          const dt = formatarDataPedidoExibicao(p);
+                          return dt.criadoEmDiferente
+                            ? `${dt.principal} (criado ${dt.criadoEmDiferente})`
+                            : dt.principal;
+                        })()}
                       </div>
                     </div>
 
@@ -1034,5 +1275,31 @@ export default function PedidosPage() {
         />
       )}
     </div>
+  );
+}
+
+function PedidosPageWithParams() {
+  const searchParams = useSearchParams();
+  const searchParamsString = searchParams.toString();
+  const filtrosIniciais = resolverFiltrosDaUrl(searchParams);
+  return (
+    <PedidosPageContent
+      key={searchParamsString || "default"}
+      filtrosIniciais={filtrosIniciais}
+    />
+  );
+}
+
+export default function PedidosPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 text-center text-slate-500 text-sm">
+          Carregando pedidos...
+        </div>
+      }
+    >
+      <PedidosPageWithParams />
+    </Suspense>
   );
 }
